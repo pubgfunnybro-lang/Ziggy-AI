@@ -3,9 +3,36 @@ const SYSTEM = `You are Ziggy, a friendly, quick-witted and helpful AI friend.
 - Be warm, clear and concise. Use short paragraphs. Add a light touch of humor when it fits.
 - If you are not sure about something, say so honestly instead of guessing.`;
 
+const hits = new Map<string, number[]>();
+const LIMIT = 10;
+const WINDOW_MS = 60_000;
+const MAX_CHARS = 2000;
+
+function tooMany(ip: string) {
+  const now = Date.now();
+  const recent = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
+  recent.push(now);
+  hits.set(ip, recent);
+  if (hits.size > 5000) hits.clear();
+  return recent.length > LIMIT;
+}
+
 export async function POST(req: Request) {
   try {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    if (tooMany(ip)) {
+      return new Response("Too many messages. Please wait a minute.", { status: 429 });
+    }
+
     const { messages } = await req.json();
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return new Response("Bad request", { status: 400 });
+    }
+
+    const clean = messages.slice(-20).map((m: { role: string; content: string }) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: String(m.content ?? "").slice(0, MAX_CHARS),
+    }));
 
     const upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -16,7 +43,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: "openai/gpt-oss-20b",
         stream: true,
-        messages: [{ role: "system", content: SYSTEM }, ...messages.slice(-20)],
+        messages: [{ role: "system", content: SYSTEM }, ...clean],
       }),
     });
 
