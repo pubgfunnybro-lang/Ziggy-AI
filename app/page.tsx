@@ -55,12 +55,33 @@ const md: Components = {
   td: ({ children }) => <td className="border-t border-zinc-700 px-3 py-2">{children}</td>,
 };
 
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard
+          ?.writeText(text)
+          .then(() => {
+            setDone(true);
+            setTimeout(() => setDone(false), 1500);
+          })
+          .catch(() => {});
+      }}
+      className="mt-2 rounded-md border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:border-fuchsia-500 hover:text-zinc-200"
+    >
+      {done ? "Copied ?" : "Copy"}
+    </button>
+  );
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     try {
@@ -81,6 +102,10 @@ export default function Home() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  function stop() {
+    abortRef.current?.abort();
+  }
+
   function newChat() {
     if (loading) return;
     setMessages([]);
@@ -94,16 +119,19 @@ export default function Home() {
     setMessages([...next, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let acc = "";
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: next }),
+        signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error("bad response");
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let acc = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -114,7 +142,11 @@ export default function Home() {
         setMessages([...next, { role: "assistant", content: "Hmm, I didn't get a reply. Please try again." }]);
       }
     } catch {
-      setMessages([...next, { role: "assistant", content: "Sorry, something went wrong on my end. Please try again." }]);
+      if (controller.signal.aborted) {
+        setMessages([...next, { role: "assistant", content: acc || "Stopped." }]);
+      } else {
+        setMessages([...next, { role: "assistant", content: "Sorry, something went wrong on my end. Please try again." }]);
+      }
     }
     setLoading(false);
   }
@@ -178,9 +210,12 @@ export default function Home() {
                 </div>
                 <div className="min-w-0 max-w-[88%] rounded-2xl rounded-tl-md border border-violet-500/20 bg-zinc-900 px-4 py-3 text-[15px] text-zinc-100">
                   {m.content ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>
-                      {m.content}
-                    </ReactMarkdown>
+                    <>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>
+                        {m.content}
+                      </ReactMarkdown>
+                      {!(loading && i === messages.length - 1) && <CopyButton text={m.content} />}
+                    </>
                   ) : (
                     <div className="flex items-center gap-1 py-1">
                       <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400" />
@@ -206,11 +241,10 @@ export default function Home() {
             placeholder="Ask Ziggy anything..."
           />
           <button
-            onClick={() => send()}
-            disabled={loading}
-            className="rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 px-5 font-semibold text-white disabled:opacity-50"
+            onClick={() => (loading ? stop() : send())}
+            className="rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 px-5 font-semibold text-white"
           >
-            Send
+            {loading ? "Stop" : "Send"}
           </button>
         </div>
       </footer>
