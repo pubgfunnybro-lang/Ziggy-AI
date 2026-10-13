@@ -7,9 +7,10 @@ import type { Components } from "react-markdown";
 type Msg = { role: "user" | "assistant"; content: string };
 const KEY = "ziggy-chat-v1";
 const IDEAS = [
-  { icon: "??", text: "Tell me a funny joke" },
-  { icon: "??", text: "Make me a plan to learn Python" },
-  { icon: "??", text: "Explain AI in simple words" },
+  { icon: "??", title: "Tell me a joke", sub: "Make me laugh", text: "Tell me a funny joke" },
+  { icon: "??", title: "Learn Python", sub: "Get a study plan", text: "Make me a plan to learn Python" },
+  { icon: "??", title: "Explain AI", sub: "In simple words", text: "Explain AI in simple words" },
+  { icon: "??", title: "Write something", sub: "Email, bio or caption", text: "Help me write a short, friendly email to a teacher" },
 ];
 
 const md: Components = {
@@ -82,6 +83,7 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     try {
@@ -101,6 +103,13 @@ export default function Home() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, [input]);
 
   function stop() {
     abortRef.current?.abort();
@@ -151,45 +160,62 @@ export default function Home() {
     setLoading(false);
   }
 
+  const canSend = input.trim().length > 0;
+
   return (
-    <div className="flex h-dvh flex-col bg-zinc-950 text-zinc-100">
-      <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/80 px-4 py-3">
+    <div className="relative flex h-dvh flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+      <style>{`@keyframes zfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.zfade{animation:zfade .3s ease-out}`}</style>
+
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-violet-600/20 blur-3xl" />
+        <div className="absolute -bottom-40 right-0 h-80 w-80 rounded-full bg-fuchsia-600/15 blur-3xl" />
+        <div className="absolute left-0 top-1/3 h-72 w-72 rounded-full bg-sky-500/10 blur-3xl" />
+      </div>
+
+      <header className="relative z-10 flex items-center justify-between border-b border-white/10 bg-zinc-950/60 px-4 py-3 backdrop-blur-xl">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-lg font-bold text-white shadow-lg shadow-fuchsia-500/20">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-xl font-bold text-white shadow-lg shadow-fuchsia-500/30">
             Z
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-lg font-bold leading-tight text-transparent">
               Ziggy AI
             </h1>
-            <p className="text-xs text-zinc-400">Your fast and friendly AI buddy</p>
+            <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              Online and ready to chat
+            </p>
           </div>
         </div>
         <button
           onClick={newChat}
-          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-fuchsia-500 hover:bg-zinc-900"
+          className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-zinc-200 transition hover:border-fuchsia-500/60 hover:bg-white/10"
         >
           + New chat
         </button>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="mx-auto flex max-w-2xl flex-col gap-4">
+      <main className="relative z-10 flex-1 overflow-y-auto px-4 py-6 [scrollbar-width:thin]">
+        <div className="mx-auto flex max-w-3xl flex-col gap-5">
           {ready && messages.length === 0 && (
-            <div className="mt-10 text-center">
-              <h2 className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-amber-200 bg-clip-text text-3xl font-bold text-transparent">
+            <div className="zfade mt-6 text-center sm:mt-14">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-3xl font-bold text-white shadow-xl shadow-fuchsia-500/30">
+                Z
+              </div>
+              <h2 className="mt-5 bg-gradient-to-r from-violet-300 via-fuchsia-300 to-amber-200 bg-clip-text text-4xl font-bold text-transparent">
                 Hi! I&apos;m Ziggy.
               </h2>
               <p className="mt-2 text-zinc-400">Ask me anything, in any language.</p>
-              <div className="mt-6 flex flex-col gap-2">
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {IDEAS.map((idea) => (
                   <button
                     key={idea.text}
                     onClick={() => send(idea.text)}
-                    className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-left text-sm text-zinc-200 hover:border-violet-500 hover:bg-zinc-900/60"
+                    className="group rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:-translate-y-0.5 hover:border-fuchsia-500/50 hover:bg-white/10"
                   >
-                    <span className="text-lg">{idea.icon}</span>
-                    {idea.text}
+                    <div className="text-2xl">{idea.icon}</div>
+                    <div className="mt-2 font-semibold text-zinc-100">{idea.title}</div>
+                    <div className="text-sm text-zinc-400">{idea.sub}</div>
                   </button>
                 ))}
               </div>
@@ -198,17 +224,17 @@ export default function Home() {
 
           {messages.map((m, i) =>
             m.role === "user" ? (
-              <div key={i} className="flex justify-end">
-                <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-gradient-to-br from-violet-600 to-fuchsia-600 px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-lg shadow-fuchsia-900/20">
+              <div key={i} className="zfade flex justify-end">
+                <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-gradient-to-br from-violet-600 to-fuchsia-600 px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-lg shadow-fuchsia-900/30">
                   {m.content}
                 </div>
               </div>
             ) : (
-              <div key={i} className="flex items-start gap-2">
-                <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-sm font-bold text-white">
+              <div key={i} className="zfade flex items-start gap-3">
+                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-sm font-bold text-white shadow-md shadow-fuchsia-500/30">
                   Z
                 </div>
-                <div className="min-w-0 max-w-[88%] rounded-2xl rounded-tl-md border border-violet-500/20 bg-zinc-900 px-4 py-3 text-[15px] text-zinc-100">
+                <div className="min-w-0 max-w-[90%] rounded-2xl rounded-tl-md border border-white/10 bg-zinc-900/80 px-4 py-3 text-[15px] text-zinc-100 backdrop-blur">
                   {m.content ? (
                     <>
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>
@@ -231,21 +257,41 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="border-t border-zinc-800 px-4 py-3">
-        <div className="mx-auto flex max-w-2xl gap-2">
-          <input
-            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-zinc-100 placeholder-zinc-500 outline-none focus:border-violet-500"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder="Ask Ziggy anything..."
-          />
-          <button
-            onClick={() => (loading ? stop() : send())}
-            className="rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 px-5 font-semibold text-white"
-          >
-            {loading ? "Stop" : "Send"}
-          </button>
+      <footer className="relative z-10 px-4 pb-3 pt-2">
+        <div className="mx-auto max-w-3xl">
+          <div className="flex items-end gap-2 rounded-3xl border border-white/10 bg-zinc-900/80 p-2 pl-4 shadow-xl shadow-black/40 backdrop-blur-xl focus-within:border-violet-500/60">
+            <textarea
+              ref={taRef}
+              rows={1}
+              className="max-h-40 flex-1 resize-none bg-transparent py-2.5 text-[15px] text-zinc-100 placeholder-zinc-500 outline-none"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!loading) send();
+                }
+              }}
+              placeholder="Ask Ziggy anything..."
+            />
+            <button
+              onClick={() => (loading ? stop() : send())}
+              disabled={!loading && !canSend}
+              aria-label={loading ? "Stop" : "Send"}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-fuchsia-900/40 transition hover:scale-105 disabled:opacity-40 disabled:hover:scale-100"
+            >
+              {loading ? (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                  <rect x="5" y="5" width="14" height="14" rx="2" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <p className="mt-2 text-center text-xs text-zinc-500">Ziggy can make mistakes. Double-check important info.</p>
         </div>
       </footer>
     </div>
