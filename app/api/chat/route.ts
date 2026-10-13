@@ -4,6 +4,16 @@ const SYSTEM = `You are Ziggy, a friendly, quick-witted and helpful AI friend.
 - Format replies with Markdown so they look great: short paragraphs, **bold** for key terms, bullet or numbered lists for steps, ## headings for longer answers, tables when comparing things, and fenced code blocks for code. Use a few fitting emojis, but do not overdo it.
 - If you are not sure about something, say so honestly instead of guessing.`;
 
+const PERSONAS: Record<string, string> = {
+  friendly: "",
+  tutor:
+    "Persona: act as a patient tutor. Explain step by step with simple examples, then finish with one short question to check understanding.",
+  coder:
+    "Persona: act as an expert software engineer. Give clear, correct code in fenced code blocks with brief explanations. Prefer practical solutions.",
+  funny:
+    "Persona: be extra playful and witty. Add humor and light jokes, but still give correct, useful answers.",
+};
+
 const hits = new Map<string, number[]>();
 const LIMIT = 10;
 const WINDOW_MS = 60_000;
@@ -25,10 +35,13 @@ export async function POST(req: Request) {
       return new Response("Too many messages. Please wait a minute.", { status: 429 });
     }
 
-    const { messages } = await req.json();
+    const { messages, persona } = await req.json();
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response("Bad request", { status: 400 });
     }
+
+    const key = typeof persona === "string" && persona in PERSONAS ? persona : "friendly";
+    const system = PERSONAS[key] ? SYSTEM + "\n" + PERSONAS[key] : SYSTEM;
 
     const clean = messages.slice(-20).map((m: { role: string; content: string }) => ({
       role: m.role === "assistant" ? "assistant" : "user",
@@ -44,7 +57,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: "openai/gpt-oss-20b",
         stream: true,
-        messages: [{ role: "system", content: SYSTEM }, ...clean],
+        messages: [{ role: "system", content: system }, ...clean],
       }),
     });
 
