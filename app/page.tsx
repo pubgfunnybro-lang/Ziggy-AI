@@ -23,6 +23,14 @@ const CHATS_KEY = "ziggy-chats-v2";
 const ACTIVE_KEY = "ziggy-active-v2";
 const OLD_KEY = "ziggy-chat-v1";
 const THEME_KEY = "ziggy-theme";
+const PERSONA_KEY = "ziggy-persona";
+
+const PERSONAS = [
+  { id: "friendly", label: "Friendly" },
+  { id: "tutor", label: "Tutor" },
+  { id: "coder", label: "Coder" },
+  { id: "funny", label: "Funny" },
+];
 
 const VOICES = [
   { label: "EN", code: "en-US" },
@@ -32,57 +40,61 @@ const VOICES = [
 ];
 
 const IDEAS = [
-  { icon: "??", title: "Tell me a joke", sub: "Make me laugh", text: "Tell me a funny joke" },
-  { icon: "??", title: "Learn Python", sub: "Get a study plan", text: "Make me a plan to learn Python" },
-  { icon: "??", title: "Explain AI", sub: "In simple words", text: "Explain AI in simple words" },
-  { icon: "??", title: "Write something", sub: "Email, bio or caption", text: "Help me write a short, friendly email to a teacher" },
+  { title: "Tell me a joke", sub: "Something to lighten the day", text: "Tell me a funny joke" },
+  { title: "Learn Python", sub: "Get a simple study plan", text: "Make me a plan to learn Python" },
+  { title: "Explain AI", sub: "In plain words", text: "Explain AI in simple words" },
+  { title: "Write an email", sub: "Short and polite", text: "Help me write a short, friendly email to a teacher" },
 ];
 
 const CSS = `
-.zroot{--bg:#09090b;--text:#f4f4f5;--muted:#a1a1aa;--faint:#71717a;--border:rgba(255,255,255,.1);--surface:rgba(255,255,255,.05);--surface-hover:rgba(255,255,255,.1);--bubble:rgba(24,24,27,.8);--header:rgba(9,9,11,.6);--side:rgba(9,9,11,.88);--input:rgba(24,24,27,.8);--h1:#f0abfc;--h2:#c4b5fd;--h3:#7dd3fc;--strong:#fcd34d;--em:#f9a8d4;--link:#38bdf8;--code:#6ee7b7;--codebg:#09090b;--quote:rgba(24,24,27,.6);--th:rgba(139,92,246,.35);--rowalt:rgba(24,24,27,.5);background:var(--bg);color:var(--text)}
-.zroot.light{--bg:#fafaf9;--text:#18181b;--muted:#52525b;--faint:#71717a;--border:rgba(0,0,0,.1);--surface:rgba(255,255,255,.8);--surface-hover:#ffffff;--bubble:rgba(255,255,255,.92);--header:rgba(255,255,255,.7);--side:rgba(255,255,255,.92);--input:rgba(255,255,255,.95);--h1:#a21caf;--h2:#6d28d9;--h3:#0369a1;--strong:#b45309;--em:#be185d;--link:#0369a1;--code:#047857;--codebg:#f4f4f5;--quote:rgba(244,244,245,.9);--th:rgba(139,92,246,.18);--rowalt:rgba(244,244,245,.8)}
-.zroot.light .zglow{opacity:.5}
+.zroot{--bg:#1f1e1d;--text:#ececec;--muted:#9b9a96;--border:rgba(255,255,255,.09);--surface:rgba(255,255,255,.06);--userbg:#2d2c2a;--side:#191817;--input:#2a2927;--codebg:#161615;--accent:#d97757;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.zroot.light{--bg:#faf9f5;--text:#1f1e1d;--muted:#6b6a66;--border:rgba(0,0,0,.1);--surface:rgba(0,0,0,.05);--userbg:#eeece2;--side:#f3f1ea;--input:#ffffff;--codebg:#f0eee6}
+.zserif{font-family:Georgia,"Times New Roman",serif}
 .zmuted{color:var(--muted)}
-.zfaint{color:var(--faint)}
-.zcard{background:var(--surface);border:1px solid var(--border)}
-.zcard:hover{background:var(--surface-hover);border-color:rgba(217,70,239,.5)}
-.zbubble{background:var(--bubble);border:1px solid var(--border)}
-.zheader{background:var(--header);border-bottom:1px solid var(--border)}
+.zheader{border-bottom:1px solid var(--border)}
 .zside{background:var(--side);border-right:1px solid var(--border)}
 .zinput{background:var(--input);border:1px solid var(--border)}
-.zinput:focus-within{border-color:rgba(139,92,246,.6)}
+.zinput:focus-within{border-color:var(--muted)}
 .zinput textarea{color:var(--text)}
-.zinput textarea::placeholder{color:var(--faint)}
-.zbtn{background:var(--surface);border:1px solid var(--border);color:var(--text)}
-.zbtn:hover{background:var(--surface-hover);border-color:rgba(217,70,239,.6)}
-.zitem{border:1px solid transparent}
-.zitem:hover{background:var(--surface)}
-.zitem.on{background:var(--surface-hover);border-color:rgba(217,70,239,.45)}
-@keyframes zfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.zfade{animation:zfade .3s ease-out}
-.zmd{font-size:15px;line-height:1.65;overflow-wrap:anywhere}
-.zmd p{margin:0 0 .6rem}
+.zinput textarea::placeholder{color:var(--muted)}
+.zbtn{border:1px solid var(--border);background:transparent;color:var(--text)}
+.zbtn:hover{background:var(--surface)}
+.zbtn option{background:#262524;color:#ececec}
+.zroot.light .zbtn option{background:#ffffff;color:#1f1e1d}
+.zchip{border:1px solid var(--border);background:transparent}
+.zchip:hover{background:var(--surface)}
+.zuser{background:var(--userbg)}
+.zact{color:var(--muted);font-size:12px;padding:.25rem .5rem;border-radius:.4rem}
+.zact:hover{background:var(--surface);color:var(--text)}
+.zitem{color:var(--muted)}
+.zitem:hover{background:var(--surface);color:var(--text)}
+.zitem.on{background:var(--surface);color:var(--text)}
+.zdot{background:var(--muted)}
+@keyframes zfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.zfade{animation:zfade .25s ease-out}
+.zmd{font-size:15.5px;line-height:1.7;overflow-wrap:anywhere;color:var(--text)}
+.zmd p{margin:0 0 .85rem}
 .zmd p:last-child{margin-bottom:0}
-.zmd h1{font-size:1.25rem;font-weight:700;margin:.8rem 0 .5rem;color:var(--h1)}
-.zmd h2{font-size:1.1rem;font-weight:700;margin:.8rem 0 .5rem;color:var(--h2)}
-.zmd h3{font-size:1rem;font-weight:600;margin:.6rem 0 .4rem;color:var(--h3)}
-.zmd strong{font-weight:600;color:var(--strong)}
-.zmd em{font-style:italic;color:var(--em)}
-.zmd ul{list-style:disc;padding-left:1.25rem;margin:0 0 .6rem}
-.zmd ol{list-style:decimal;padding-left:1.25rem;margin:0 0 .6rem}
-.zmd li{margin:.2rem 0}
-.zmd li::marker{color:#d946ef}
-.zmd a{color:var(--link);text-decoration:underline}
-.zmd blockquote{border-left:4px solid #d946ef;background:var(--quote);padding:.25rem .75rem;margin:.5rem 0;font-style:italic}
-.zmd hr{border:0;border-top:1px solid var(--border);margin:.8rem 0}
-.zmd pre{background:var(--codebg);border:1px solid var(--border);border-radius:.75rem;padding:.75rem;overflow-x:auto;margin:.6rem 0}
-.zmd code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;color:var(--code)}
+.zmd h1,.zmd h2,.zmd h3{font-weight:600;margin:1.1rem 0 .5rem;line-height:1.3}
+.zmd h1{font-size:1.3rem}
+.zmd h2{font-size:1.15rem}
+.zmd h3{font-size:1.05rem}
+.zmd strong{font-weight:600}
+.zmd em{font-style:italic}
+.zmd ul{list-style:disc;padding-left:1.4rem;margin:0 0 .85rem}
+.zmd ol{list-style:decimal;padding-left:1.4rem;margin:0 0 .85rem}
+.zmd li{margin:.3rem 0}
+.zmd li::marker{color:var(--muted)}
+.zmd a{color:var(--text);text-decoration:underline;text-underline-offset:3px}
+.zmd blockquote{border-left:3px solid var(--border);padding-left:.9rem;margin:.7rem 0;color:var(--muted)}
+.zmd hr{border:0;border-top:1px solid var(--border);margin:1rem 0}
+.zmd pre{background:var(--codebg);border:1px solid var(--border);border-radius:.75rem;padding:.85rem;overflow-x:auto;margin:.8rem 0}
+.zmd code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px;color:var(--text)}
 .zmd :not(pre)>code{background:var(--codebg);padding:.1rem .35rem;border-radius:.35rem}
-.zmd table{width:100%;border-collapse:collapse;font-size:14px}
-.zmd th{background:var(--th);text-align:left;padding:.5rem .75rem;font-weight:600}
-.zmd td{border-top:1px solid var(--border);padding:.5rem .75rem}
-.zmd tr:nth-child(even) td{background:var(--rowalt)}
-.zscroll{overflow-x:auto;border:1px solid var(--border);border-radius:.75rem;margin:.6rem 0}
+.zmd table{width:100%;border-collapse:collapse;font-size:14.5px}
+.zmd th{text-align:left;padding:.55rem .8rem;font-weight:600;border-bottom:1px solid var(--border)}
+.zmd td{padding:.55rem .8rem;border-top:1px solid var(--border)}
+.zscroll{overflow-x:auto;border:1px solid var(--border);border-radius:.75rem;margin:.8rem 0}
 `;
 
 const mdComponents: Components = {
@@ -114,9 +126,35 @@ function CopyButton({ text }: { text: string }) {
           })
           .catch(() => {});
       }}
-      className="zbtn mt-2 rounded-md px-2 py-0.5 text-xs"
+      className="zact"
     >
-      {done ? "Copied ?" : "Copy"}
+      {done ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function SpeakButton({ text }: { text: string }) {
+  const [on, setOn] = useState(false);
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
+  function toggle() {
+    const synth = window.speechSynthesis;
+    if (on) {
+      synth.cancel();
+      setOn(false);
+      return;
+    }
+    synth.cancel();
+    const clean = text.replace(/[`*_#>|~-]/g, " ").replace(/\s+/g, " ").trim();
+    const u = new SpeechSynthesisUtterance(clean);
+    u.lang = /[\u0600-\u06FF]/.test(clean) ? "ur-PK" : "en-US";
+    u.onend = () => setOn(false);
+    u.onerror = () => setOn(false);
+    synth.speak(u);
+    setOn(true);
+  }
+  return (
+    <button onClick={toggle} className="zact">
+      {on ? "Stop reading" : "Read aloud"}
     </button>
   );
 }
@@ -128,6 +166,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
+  const [persona, setPersona] = useState("friendly");
   const [sidebar, setSidebar] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceIdx, setVoiceIdx] = useState(0);
@@ -158,6 +197,8 @@ export default function Home() {
       act = localStorage.getItem(ACTIVE_KEY) ?? "";
       const th = localStorage.getItem(THEME_KEY);
       if (th === "light" || th === "dark") setTheme(th);
+      const pe = localStorage.getItem(PERSONA_KEY);
+      if (pe && PERSONAS.some((p) => p.id === pe)) setPersona(pe);
     } catch {}
     if (!Array.isArray(list)) list = [];
     if (list.length === 0) {
@@ -180,8 +221,9 @@ export default function Home() {
       localStorage.setItem(CHATS_KEY, JSON.stringify(keep));
       localStorage.setItem(ACTIVE_KEY, activeId);
       localStorage.setItem(THEME_KEY, theme);
+      localStorage.setItem(PERSONA_KEY, persona);
     } catch {}
-  }, [chats, activeId, theme, ready]);
+  }, [chats, activeId, theme, persona, ready]);
 
   const active = chats.find((c) => c.id === activeId);
   const messages = active?.messages ?? [];
@@ -248,7 +290,7 @@ export default function Home() {
     const w = window as unknown as { SpeechRecognition?: SpeechCtor; webkitSpeechRecognition?: SpeechCtor };
     const Ctor = w.SpeechRecognition || w.webkitSpeechRecognition;
     if (!Ctor) {
-      setNote("Voice input isn't supported in this browser. Try Chrome or Edge.");
+      setNote("Voice input is not supported in this browser. Try Chrome or Edge.");
       return;
     }
     const rec = new Ctor();
@@ -263,7 +305,7 @@ export default function Home() {
       setInput(base + text);
     };
     rec.onerror = () => {
-      setNote("Voice isn't available here. Allow mic access, or try Chrome or Edge.");
+      setNote("Voice is not available here. Allow mic access, or try Chrome or Edge.");
       setListening(false);
     };
     rec.onend = () => setListening(false);
@@ -277,21 +319,14 @@ export default function Home() {
     }
   }
 
-  async function send(text?: string) {
-    const content = (text ?? input).trim();
-    if (!content || loading || !active) return;
-    recRef.current?.stop();
-    const chatId = active.id;
-    const next: Msg[] = [...active.messages, { role: "user", content }];
-    const title = active.messages.length === 0 ? content.slice(0, 40) : active.title;
+  async function run(chatId: string, base: Msg[], title?: string) {
     setChats((p) =>
       p.map((c) =>
         c.id === chatId
-          ? { ...c, title, updated: Date.now(), messages: [...next, { role: "assistant", content: "" }] }
+          ? { ...c, ...(title ? { title } : {}), updated: Date.now(), messages: [...base, { role: "assistant", content: "" }] }
           : c
       )
     );
-    setInput("");
     setNote("");
     setLoading(true);
     const controller = new AbortController();
@@ -301,7 +336,7 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ messages: base, persona }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error("bad response");
@@ -311,19 +346,36 @@ export default function Home() {
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-        setMsgs(chatId, [...next, { role: "assistant", content: acc }]);
+        setMsgs(chatId, [...base, { role: "assistant", content: acc }]);
       }
       if (!acc) {
-        setMsgs(chatId, [...next, { role: "assistant", content: "Hmm, I didn't get a reply. Please try again." }]);
+        setMsgs(chatId, [...base, { role: "assistant", content: "I did not get a reply. Please try again." }]);
       }
     } catch {
       if (controller.signal.aborted) {
-        setMsgs(chatId, [...next, { role: "assistant", content: acc || "Stopped." }]);
+        setMsgs(chatId, [...base, { role: "assistant", content: acc || "Stopped." }]);
       } else {
-        setMsgs(chatId, [...next, { role: "assistant", content: "Sorry, something went wrong on my end. Please try again." }]);
+        setMsgs(chatId, [...base, { role: "assistant", content: "Sorry, something went wrong on my end. Please try again." }]);
       }
     }
     setLoading(false);
+  }
+
+  function send(text?: string) {
+    const content = (text ?? input).trim();
+    if (!content || loading || !active) return;
+    recRef.current?.stop();
+    const next: Msg[] = [...active.messages, { role: "user", content }];
+    const title = active.messages.length === 0 ? content.slice(0, 40) : undefined;
+    setInput("");
+    run(active.id, next, title);
+  }
+
+  function regenerate() {
+    if (loading || !active) return;
+    const lastUser = active.messages.map((m) => m.role).lastIndexOf("user");
+    if (lastUser < 0) return;
+    run(active.id, active.messages.slice(0, lastUser + 1));
   }
 
   const canSend = input.trim().length > 0;
@@ -336,90 +388,84 @@ export default function Home() {
 
       <aside
         className={
-          "zside fixed inset-y-0 left-0 z-30 flex w-72 flex-col backdrop-blur-xl transition-transform md:static md:translate-x-0 " +
+          "zside fixed inset-y-0 left-0 z-30 flex w-72 flex-col transition-transform md:static md:translate-x-0 " +
           (sidebar ? "translate-x-0" : "-translate-x-full")
         }
       >
-        <div className="p-3">
-          <button onClick={newChat} className="zbtn w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium">
+        <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg text-sm font-semibold text-white" style={{ background: "var(--accent)" }}>
+            Z
+          </div>
+          <span className="zserif text-lg">Ziggy</span>
+        </div>
+        <div className="px-3 pb-2 pt-2">
+          <button onClick={newChat} className="zbtn w-full rounded-lg px-3 py-2 text-left text-sm">
             + New chat
           </button>
         </div>
-        <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+        <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
           {sorted.map((c) => (
             <div key={c.id} className={"zitem flex items-center gap-1 rounded-lg px-3 py-2 text-sm " + (c.id === activeId ? "on" : "")}>
               <button onClick={() => openChat(c.id)} className="min-w-0 flex-1 truncate text-left">
                 {c.title}
               </button>
-              <button onClick={() => removeChat(c.id)} aria-label="Delete chat" className="zfaint shrink-0 rounded px-1 hover:text-red-400">
+              <button onClick={() => removeChat(c.id)} aria-label="Delete chat" className="shrink-0 rounded px-1 opacity-60 hover:opacity-100">
                 ?
               </button>
             </div>
           ))}
         </div>
-        <p className="zfaint px-4 pb-3 text-xs">Chats are saved in this browser only.</p>
+        <p className="zmuted px-4 pb-3 text-xs">Chats are saved in this browser only.</p>
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="zglow absolute -top-40 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-violet-600/20 blur-3xl" />
-          <div className="zglow absolute -bottom-40 right-0 h-80 w-80 rounded-full bg-fuchsia-600/15 blur-3xl" />
-          <div className="zglow absolute left-0 top-1/3 h-72 w-72 rounded-full bg-sky-500/10 blur-3xl" />
-        </div>
-
-        <header className="zheader relative z-10 flex items-center justify-between px-4 py-3 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSidebar(true)} aria-label="Open chats" className="zbtn rounded-lg px-2.5 py-1.5 md:hidden">
+        <header className="zheader flex items-center justify-between gap-2 px-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <button onClick={() => setSidebar(true)} aria-label="Open chats" className="zbtn rounded-lg px-2.5 py-1 md:hidden">
               ?
             </button>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-xl font-bold text-white shadow-lg shadow-fuchsia-500/30">
-              Z
-            </div>
-            <div>
-              <h1 className="bg-gradient-to-r from-violet-500 to-fuchsia-500 bg-clip-text text-lg font-bold leading-tight text-transparent">
-                Ziggy AI
-              </h1>
-              <p className="zmuted flex items-center gap-1.5 text-xs">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Online and ready to chat
-              </p>
-            </div>
+            <span className="zserif text-lg md:hidden">Ziggy</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <select
+              value={persona}
+              onChange={(e) => setPersona(e.target.value)}
+              aria-label="Personality"
+              className="zbtn rounded-lg px-2 py-1.5 text-sm outline-none"
+            >
+              {PERSONAS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               aria-label="Toggle theme"
-              className="zbtn rounded-full px-3 py-1.5 text-sm"
+              className="zbtn rounded-lg px-3 py-1.5 text-sm"
             >
-              {theme === "dark" ? "?? Light" : "?? Dark"}
+              {theme === "dark" ? "Light" : "Dark"}
             </button>
-            <button onClick={newChat} aria-label="New chat" className="zbtn rounded-full px-3 py-1.5 text-sm md:hidden">
+            <button onClick={newChat} aria-label="New chat" className="zbtn rounded-lg px-3 py-1.5 text-sm md:hidden">
               +
             </button>
           </div>
         </header>
 
-        <main className="relative z-10 flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto flex max-w-3xl flex-col gap-5">
+        <main className="flex-1 overflow-y-auto px-4 py-6">
+          <div className="mx-auto flex max-w-3xl flex-col gap-7">
             {ready && messages.length === 0 && (
-              <div className="zfade mt-6 text-center sm:mt-14">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-3xl font-bold text-white shadow-xl shadow-fuchsia-500/30">
+              <div className="zfade mt-14 text-center sm:mt-24">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-2xl font-semibold text-white" style={{ background: "var(--accent)" }}>
                   Z
                 </div>
-                <h2 className="mt-5 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-amber-500 bg-clip-text text-4xl font-bold text-transparent">
-                  Hi! I&apos;m Ziggy.
-                </h2>
-                <p className="zmuted mt-2">Ask me anything, in any language.</p>
-                <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                <h2 className="zserif mt-6 text-4xl">How can I help you today?</h2>
+                <p className="zmuted mt-2 text-sm">Ask anything, in any language.</p>
+                <div className="mt-9 grid gap-3 text-left sm:grid-cols-2">
                   {IDEAS.map((idea) => (
-                    <button
-                      key={idea.text}
-                      onClick={() => send(idea.text)}
-                      className="zcard rounded-2xl p-4 text-left transition hover:-translate-y-0.5"
-                    >
-                      <div className="text-2xl">{idea.icon}</div>
-                      <div className="mt-2 font-semibold">{idea.title}</div>
-                      <div className="zmuted text-sm">{idea.sub}</div>
+                    <button key={idea.text} onClick={() => send(idea.text)} className="zchip rounded-xl p-4 transition">
+                      <div className="text-[15px] font-medium">{idea.title}</div>
+                      <div className="zmuted mt-0.5 text-sm">{idea.sub}</div>
                     </button>
                   ))}
                 </div>
@@ -429,35 +475,40 @@ export default function Home() {
             {messages.map((m, i) =>
               m.role === "user" ? (
                 <div key={i} className="zfade flex justify-end">
-                  <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-gradient-to-br from-violet-600 to-fuchsia-600 px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-lg shadow-fuchsia-900/30">
+                  <div className="zuser max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[15.5px] leading-relaxed">
                     {m.content}
                   </div>
                 </div>
               ) : (
-                <div key={i} className="zfade flex items-start gap-3">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-sm font-bold text-white shadow-md shadow-fuchsia-500/30">
-                    Z
-                  </div>
-                  <div className="zbubble min-w-0 max-w-[90%] rounded-2xl rounded-tl-md px-4 py-3 backdrop-blur">
-                    {m.content ? (
-                      <>
-                        <div className="zmd">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-                            {m.content}
-                          </ReactMarkdown>
-                        </div>
-                        {!(loading && i === messages.length - 1) && <CopyButton text={m.content} />}
-                      </>
-                    ) : loading && i === messages.length - 1 ? (
-                      <div className="flex items-center gap-1 py-1">
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-fuchsia-400" style={{ animationDelay: "150ms" }} />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-amber-300" style={{ animationDelay: "300ms" }} />
+                <div key={i} className="zfade">
+                  {m.content ? (
+                    <>
+                      <div className="zmd">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+                          {m.content}
+                        </ReactMarkdown>
                       </div>
-                    ) : (
-                      <span className="zfaint text-sm">No reply.</span>
-                    )}
-                  </div>
+                      {!(loading && i === messages.length - 1) && (
+                        <div className="-ml-2 mt-2 flex flex-wrap gap-1">
+                          <CopyButton text={m.content} />
+                          <SpeakButton text={m.content} />
+                          {i === messages.length - 1 && (
+                            <button onClick={regenerate} className="zact">
+                              Retry
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : loading && i === messages.length - 1 ? (
+                    <div className="flex items-center gap-1.5 py-2">
+                      <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" />
+                      <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" style={{ animationDelay: "150ms" }} />
+                      <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  ) : (
+                    <span className="zmuted text-sm">No reply.</span>
+                  )}
                 </div>
               )
             )}
@@ -465,13 +516,13 @@ export default function Home() {
           </div>
         </main>
 
-        <footer className="relative z-10 px-4 pb-3 pt-2">
+        <footer className="px-4 pb-3 pt-2">
           <div className="mx-auto max-w-3xl">
-            <div className="zinput flex items-end gap-2 rounded-3xl p-2 pl-4 shadow-xl shadow-black/20 backdrop-blur-xl">
+            <div className="zinput flex items-end gap-2 rounded-2xl p-2 pl-4 shadow-lg shadow-black/10">
               <textarea
                 ref={taRef}
                 rows={1}
-                className="max-h-40 flex-1 resize-none bg-transparent py-2.5 text-[15px] outline-none"
+                className="max-h-40 flex-1 resize-none bg-transparent py-2.5 text-[15.5px] outline-none"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -480,7 +531,7 @@ export default function Home() {
                     if (!loading) send();
                   }
                 }}
-                placeholder="Ask Ziggy anything..."
+                placeholder="Message Ziggy"
               />
               {voiceOk && (
                 <>
@@ -488,7 +539,7 @@ export default function Home() {
                     onClick={() => setVoiceIdx((voiceIdx + 1) % VOICES.length)}
                     disabled={listening}
                     title="Voice language (click to change)"
-                    className="zfaint h-10 shrink-0 rounded-full px-1.5 text-xs font-semibold"
+                    className="zmuted h-10 shrink-0 rounded-lg px-1.5 text-xs font-semibold"
                   >
                     {VOICES[voiceIdx].label}
                   </button>
@@ -496,11 +547,14 @@ export default function Home() {
                     onClick={toggleVoice}
                     aria-label={listening ? "Stop listening" : "Start voice input"}
                     className={
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full " +
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg " +
                       (listening ? "animate-pulse bg-red-500 text-white" : "zbtn")
                     }
                   >
-                    ??
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="3" width="6" height="11" rx="3" />
+                      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                    </svg>
                   </button>
                 </>
               )}
@@ -508,7 +562,8 @@ export default function Home() {
                 onClick={() => (loading ? stop() : send())}
                 disabled={!loading && !canSend}
                 aria-label={loading ? "Stop" : "Send"}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-fuchsia-900/40 transition hover:scale-105 disabled:opacity-40 disabled:hover:scale-100"
+                style={{ background: "var(--accent)" }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white transition hover:opacity-90 disabled:opacity-40"
               >
                 {loading ? (
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
@@ -522,7 +577,7 @@ export default function Home() {
               </button>
             </div>
             {note && <p className="mt-2 text-center text-xs text-amber-500">{note}</p>}
-            <p className="zfaint mt-2 text-center text-xs">Ziggy can make mistakes. Double-check important info.</p>
+            <p className="zmuted mt-2 text-center text-xs">Ziggy can make mistakes. Please double-check important information.</p>
           </div>
         </footer>
       </div>
