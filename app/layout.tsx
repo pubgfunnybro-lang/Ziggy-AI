@@ -1,29 +1,43 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const title = "Ziggy AI";
+const description = "Ziggy AI is a fast, friendly AI assistant. Ask anything, in any language.";
 
 export const metadata: Metadata = {
-  title: "Ziggy AI",
-  description: "Ziggy AI is a fast, friendly AI chat buddy. Ask anything, in any language.",
+  metadataBase: new URL("https://ziggy-ai-pi.vercel.app"),
+  title,
+  description,
+  applicationName: "Ziggy AI",
+  openGraph: {
+    title,
+    description,
+    url: "https://ziggy-ai-pi.vercel.app",
+    siteName: "Ziggy AI",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Ziggy",
+    statusBarStyle: "black-translucent",
+  },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export const viewport: Viewport = {
+  themeColor: "#1f1e1d",
+  width: "device-width",
+  initialScale: 1,
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }
