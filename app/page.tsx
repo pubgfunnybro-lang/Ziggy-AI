@@ -4,9 +4,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; images?: string[]; imgCount?: number };
 type Chat = { id: string; title: string; messages: Msg[]; updated: number };
 type Theme = "dark" | "light";
+type Idea = { title: string; sub: string; text: string; image?: boolean };
 type SpeechRec = {
   lang: string;
   interimResults: boolean;
@@ -23,9 +24,11 @@ const CHATS_KEY = "ziggy-chats-v2";
 const ACTIVE_KEY = "ziggy-active-v2";
 const OLD_KEY = "ziggy-chat-v1";
 const THEME_KEY = "ziggy-theme";
-const PERSONA_KEY = "ziggy-persona";
+const PERSONA_KEY = "ziggy-persona-v2";
+const MAX_IMAGES = 3;
 
 const PERSONAS = [
+  { id: "professional", label: "Professional" },
   { id: "friendly", label: "Friendly" },
   { id: "tutor", label: "Tutor" },
   { id: "coder", label: "Coder" },
@@ -39,11 +42,11 @@ const VOICES = [
   { label: "AR", code: "ar-SA" },
 ];
 
-const IDEAS = [
-  { title: "Tell me a joke", sub: "Something to lighten the day", text: "Tell me a funny joke" },
+const IDEAS: Idea[] = [
+  { title: "Analyze an image", sub: "Upload a photo or screenshot", text: "", image: true },
   { title: "Learn Python", sub: "Get a simple study plan", text: "Make me a plan to learn Python" },
   { title: "Explain AI", sub: "In plain words", text: "Explain AI in simple words" },
-  { title: "Write an email", sub: "Short and polite", text: "Help me write a short, friendly email to a teacher" },
+  { title: "Write an email", sub: "Short and polite", text: "Help me write a short, professional email to a teacher" },
 ];
 
 const CSS = `
@@ -113,6 +116,38 @@ function blank(): Chat {
   return { id: uid(), title: "New chat", messages: [], updated: Date.now() };
 }
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const max = 1280;
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error("canvas"));
+        return;
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("load"));
+    };
+    img.src = url;
+  });
+}
+
 function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
@@ -163,10 +198,12 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeId, setActiveId] = useState("");
   const [input, setInput] = useState("");
+  const [images, setImages] = useState<string[]>([]);
+  const [editing, setEditing] = useState<{ i: number; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
-  const [persona, setPersona] = useState("friendly");
+  const [persona, setPersona] = useState("professional");
   const [sidebar, setSidebar] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceIdx, setVoiceIdx] = useState(0);
@@ -176,6 +213,7 @@ export default function Home() {
   const abortRef = useRef<AbortController | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<SpeechRec | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let list: Chat[] = [];
@@ -217,7 +255,15 @@ export default function Home() {
   useEffect(() => {
     if (!ready) return;
     try {
-      const keep = [...chats].sort((a, b) => b.updated - a.updated).slice(0, 50);
+      const keep = [...chats]
+        .sort((a, b) => b.updated - a.updated)
+        .slice(0, 50)
+        .map((c) => ({
+          ...c,
+          messages: c.messages.map((m) =>
+            m.images && m.images.length > 0 ? { role: m.role, content: m.content, imgCount: m.images.length } : m
+          ),
+        }));
       localStorage.setItem(CHATS_KEY, JSON.stringify(keep));
       localStorage.setItem(ACTIVE_KEY, activeId);
       localStorage.setItem(THEME_KEY, theme);
@@ -251,11 +297,13 @@ export default function Home() {
   function openChat(id: string) {
     if (loading) stop();
     setActiveId(id);
+    setEditing(null);
     setSidebar(false);
   }
 
   function newChat() {
     if (loading) stop();
+    setEditing(null);
     if (active && active.messages.length === 0) {
       setSidebar(false);
       return;
@@ -264,6 +312,7 @@ export default function Home() {
     setChats((p) => [b, ...p]);
     setActiveId(b.id);
     setInput("");
+    setImages([]);
     setSidebar(false);
   }
 
@@ -279,6 +328,25 @@ export default function Home() {
     setChats(rest);
     if (id === activeId) {
       setActiveId([...rest].sort((a, b) => b.updated - a.updated)[0].id);
+    }
+  }
+
+  async function addFiles(list: FileList | File[] | null) {
+    if (!list) return;
+    const room = MAX_IMAGES - images.length;
+    const files = Array.from(list)
+      .filter((f) => f.type.startsWith("image/"))
+      .slice(0, Math.max(room, 0));
+    if (files.length === 0) {
+      if (room <= 0) setNote("You can attach up to " + MAX_IMAGES + " images per message.");
+      return;
+    }
+    try {
+      const urls = await Promise.all(files.map(fileToDataUrl));
+      setImages((p) => [...p, ...urls].slice(0, MAX_IMAGES));
+      setNote("");
+    } catch {
+      setNote("Could not read that image. Please try a JPG or PNG.");
     }
   }
 
@@ -333,10 +401,11 @@ export default function Home() {
     abortRef.current = controller;
     let acc = "";
     try {
+      const payload = base.map((m) => ({ role: m.role, content: m.content, images: m.images }));
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: base, persona }),
+        body: JSON.stringify({ messages: payload, persona }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error("bad response");
@@ -363,12 +432,27 @@ export default function Home() {
 
   function send(text?: string) {
     const content = (text ?? input).trim();
-    if (!content || loading || !active) return;
+    if ((!content && images.length === 0) || loading || !active) return;
     recRef.current?.stop();
-    const next: Msg[] = [...active.messages, { role: "user", content }];
-    const title = active.messages.length === 0 ? content.slice(0, 40) : undefined;
+    const userMsg: Msg = { role: "user", content };
+    if (images.length > 0) userMsg.images = images;
+    const next: Msg[] = [...active.messages, userMsg];
+    const title = active.messages.length === 0 ? content.slice(0, 40) || "Image chat" : undefined;
     setInput("");
+    setImages([]);
+    setEditing(null);
     run(active.id, next, title);
+  }
+
+  function saveEdit() {
+    if (!editing || !active || loading) return;
+    const text = editing.text.trim();
+    const orig = active.messages[editing.i];
+    if (!orig || (!text && !(orig.images && orig.images.length > 0))) return;
+    const base: Msg[] = [...active.messages.slice(0, editing.i), { ...orig, content: text }];
+    const title = editing.i === 0 ? text.slice(0, 40) || "Image chat" : undefined;
+    setEditing(null);
+    run(active.id, base, title);
   }
 
   function regenerate() {
@@ -378,7 +462,7 @@ export default function Home() {
     run(active.id, active.messages.slice(0, lastUser + 1));
   }
 
-  const canSend = input.trim().length > 0;
+  const canSend = input.trim().length > 0 || images.length > 0;
 
   return (
     <div className={"zroot relative flex h-dvh overflow-hidden " + theme}>
@@ -463,7 +547,11 @@ export default function Home() {
                 <p className="zmuted mt-2 text-sm">Ask anything, in any language.</p>
                 <div className="mt-9 grid gap-3 text-left sm:grid-cols-2">
                   {IDEAS.map((idea) => (
-                    <button key={idea.text} onClick={() => send(idea.text)} className="zchip rounded-xl p-4 transition">
+                    <button
+                      key={idea.title}
+                      onClick={() => (idea.image ? fileRef.current?.click() : send(idea.text))}
+                      className="zchip rounded-xl p-4 transition"
+                    >
                       <div className="text-[15px] font-medium">{idea.title}</div>
                       <div className="zmuted mt-0.5 text-sm">{idea.sub}</div>
                     </button>
@@ -474,11 +562,52 @@ export default function Home() {
 
             {messages.map((m, i) =>
               m.role === "user" ? (
-                <div key={i} className="zfade flex justify-end">
-                  <div className="zuser max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[15.5px] leading-relaxed">
-                    {m.content}
+                editing && editing.i === i ? (
+                  <div key={i} className="zfade flex justify-end">
+                    <div className="zuser w-full max-w-[85%] rounded-2xl p-3">
+                      <textarea
+                        autoFocus
+                        rows={3}
+                        value={editing.text}
+                        onChange={(e) => setEditing({ i, text: e.target.value })}
+                        className="w-full resize-none bg-transparent text-[15.5px] outline-none"
+                      />
+                      <div className="mt-2 flex justify-end gap-2">
+                        <button onClick={() => setEditing(null)} className="zbtn rounded-lg px-3 py-1 text-sm">
+                          Cancel
+                        </button>
+                        <button
+                          onClick={saveEdit}
+                          style={{ background: "var(--accent)" }}
+                          className="rounded-lg px-3 py-1 text-sm text-white"
+                        >
+                          Save and send
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div key={i} className="zfade flex flex-col items-end gap-1">
+                    <div className="zuser max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[15.5px] leading-relaxed">
+                      {m.images && m.images.length > 0 && (
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {m.images.map((src, k) => (
+                            <img key={k} src={src} alt="Attached" className="max-h-44 rounded-lg" />
+                          ))}
+                        </div>
+                      )}
+                      {!m.images && m.imgCount ? (
+                        <div className="zmuted mb-1 text-xs">Image attached (not kept after reload)</div>
+                      ) : null}
+                      {m.content}
+                    </div>
+                    {!loading && (
+                      <button onClick={() => setEditing({ i, text: m.content })} className="zact">
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                )
               ) : (
                 <div key={i} className="zfade">
                   {m.content ? (
@@ -518,13 +647,59 @@ export default function Home() {
 
         <footer className="px-4 pb-3 pt-2">
           <div className="mx-auto max-w-3xl">
-            <div className="zinput flex items-end gap-2 rounded-2xl p-2 pl-4 shadow-lg shadow-black/10">
+            {images.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {images.map((src, k) => (
+                  <div key={k} className="relative">
+                    <img src={src} alt="Attachment" className="h-16 w-16 rounded-lg object-cover" />
+                    <button
+                      onClick={() => setImages((p) => p.filter((_, j) => j !== k))}
+                      aria-label="Remove image"
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700 text-xs text-white"
+                    >
+                      ?
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <div className="zinput flex items-end gap-2 rounded-2xl p-2 pl-2 shadow-lg shadow-black/10">
+              <button
+                onClick={() => fileRef.current?.click()}
+                aria-label="Attach image"
+                title="Attach image"
+                className="zbtn flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+              </button>
               <textarea
                 ref={taRef}
                 rows={1}
                 className="max-h-40 flex-1 resize-none bg-transparent py-2.5 text-[15.5px] outline-none"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onPaste={(e) => {
+                  const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+                  if (files.length > 0) {
+                    e.preventDefault();
+                    addFiles(files);
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
