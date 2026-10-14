@@ -27,13 +27,12 @@ export default function OgImage() {
             alignItems: "center",
             justifyContent: "center",
             borderRadius: 36,
-            background: "#d97757",
-            color: "#ffffff",
-            fontSize: 96,
-            fontWeight: 700,
+            background: "linear-gradient(135deg, #e8946f, #c45f3d)",
           }}
         >
-          Z
+          <svg width="82" height="90" viewBox="12 10 40 44">
+            <path d="M16 14H48V20.5L28.5 43.5H48V50H16V43.5L35.5 20.5H16Z" fill="#ffffff" />
+          </svg>
         </div>
         <div style={{ display: "flex", marginTop: 44, fontSize: 84, fontWeight: 700 }}>Ziggy AI</div>
         <div style={{ display: "flex", marginTop: 16, fontSize: 36, color: "#9b9a96" }}>

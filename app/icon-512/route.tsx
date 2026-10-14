@@ -10,13 +10,12 @@ export function GET() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#d97757",
-          color: "#ffffff",
-          fontSize: 280,
-          fontWeight: 700,
+          background: "linear-gradient(135deg, #e8946f, #c45f3d)",
         }}
       >
-        Z
+        <svg width="260" height="286" viewBox="12 10 40 44">
+          <path d="M16 14H48V20.5L28.5 43.5H48V50H16V43.5L35.5 20.5H16Z" fill="#ffffff" />
+        </svg>
       </div>
     ),
     { width: 512, height: 512 }

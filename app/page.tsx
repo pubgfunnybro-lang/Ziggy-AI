@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
@@ -7,7 +7,7 @@ import type { Components } from "react-markdown";
 type Msg = { role: "user" | "assistant"; content: string; images?: string[]; imgCount?: number };
 type Chat = { id: string; title: string; messages: Msg[]; updated: number };
 type Theme = "dark" | "light";
-type Idea = { title: string; sub: string; text: string; image?: boolean };
+type Idea = { title: string; sub: string; text: string; icon: string; image?: boolean };
 type SpeechRec = {
   lang: string;
   interimResults: boolean;
@@ -43,27 +43,31 @@ const VOICES = [
 ];
 
 const IDEAS: Idea[] = [
-  { title: "Analyze an image", sub: "Upload a photo or screenshot", text: "", image: true },
-  { title: "Learn Python", sub: "Get a simple study plan", text: "Make me a plan to learn Python" },
-  { title: "Explain AI", sub: "In plain words", text: "Explain AI in simple words" },
-  { title: "Write an email", sub: "Short and polite", text: "Help me write a short, professional email to a teacher" },
+  { title: "Analyze an image", sub: "Upload a photo or screenshot", text: "", icon: "image", image: true },
+  { title: "Learn Python", sub: "Get a simple study plan", text: "Make me a plan to learn Python", icon: "code" },
+  { title: "Explain AI", sub: "In plain words", text: "Explain AI in simple words", icon: "spark" },
+  { title: "Write an email", sub: "Short and professional", text: "Help me write a short, professional email to a teacher", icon: "mail" },
 ];
 
 const CSS = `
-.zroot{--bg:#1f1e1d;--text:#ececec;--muted:#9b9a96;--border:rgba(255,255,255,.09);--surface:rgba(255,255,255,.06);--userbg:#2d2c2a;--side:#191817;--input:#2a2927;--codebg:#161615;--accent:#d97757;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.zroot{--bg:#1f1e1d;--text:#ececec;--muted:#9b9a96;--border:rgba(255,255,255,.09);--surface:rgba(255,255,255,.06);--userbg:#2d2c2a;--side:#191817;--input:#262524;--codebg:#161615;--accent:#d97757;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 .zroot.light{--bg:#faf9f5;--text:#1f1e1d;--muted:#6b6a66;--border:rgba(0,0,0,.1);--surface:rgba(0,0,0,.05);--userbg:#eeece2;--side:#f3f1ea;--input:#ffffff;--codebg:#f0eee6}
+.zroot *{scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .zserif{font-family:Georgia,"Times New Roman",serif}
 .zmuted{color:var(--muted)}
-.zheader{border-bottom:1px solid var(--border)}
 .zside{background:var(--side);border-right:1px solid var(--border)}
-.zinput{background:var(--input);border:1px solid var(--border)}
+.zinput{background:var(--input);border:1px solid var(--border);box-shadow:0 2px 14px rgba(0,0,0,.14)}
 .zinput:focus-within{border-color:var(--muted)}
 .zinput textarea{color:var(--text)}
 .zinput textarea::placeholder{color:var(--muted)}
+.zghost{color:var(--muted);background:transparent}
+.zghost:hover{color:var(--text);background:var(--surface)}
 .zbtn{border:1px solid var(--border);background:transparent;color:var(--text)}
 .zbtn:hover{background:var(--surface)}
-.zbtn option{background:#262524;color:#ececec}
-.zroot.light .zbtn option{background:#ffffff;color:#1f1e1d}
+.zselect{border:1px solid var(--border);background:transparent;color:var(--text);border-radius:9999px;padding:.35rem .8rem;font-size:.85rem;outline:none;cursor:pointer}
+.zselect:hover{background:var(--surface)}
+.zselect option{background:#262524;color:#ececec}
+.zroot.light .zselect option{background:#ffffff;color:#1f1e1d}
 .zchip{border:1px solid var(--border);background:transparent}
 .zchip:hover{background:var(--surface)}
 .zuser{background:var(--userbg)}
@@ -108,12 +112,78 @@ const mdComponents: Components = {
   ),
 };
 
+function Logo({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Ziggy">
+      <defs>
+        <linearGradient id="zlogo" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#e8946f" />
+          <stop offset="1" stopColor="#c45f3d" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="16" fill="url(#zlogo)" />
+      <path d="M16 14H48V20.5L28.5 43.5H48V50H16V43.5L35.5 20.5H16Z" fill="#ffffff" />
+    </svg>
+  );
+}
+
+function Icon({ name, size = 20 }: { name: string; size?: number }) {
+  const paths: Record<string, ReactNode> = {
+    image: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <path d="M21 15l-5-5L5 21" />
+      </>
+    ),
+    code: <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />,
+    spark: <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />,
+    mail: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="M3 7l9 6 9-6" />
+      </>
+    ),
+    sun: (
+      <>
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </>
+    ),
+    moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />,
+    plus: <path d="M12 5v14M5 12h14" />,
+    menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+    close: <path d="M18 6L6 18M6 6l12 12" />,
+    mic: (
+      <>
+        <rect x="9" y="3" width="6" height="11" rx="3" />
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+      </>
+    ),
+    up: <path d="M12 19V5M5 12l7-7 7 7" />,
+  };
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[name]}
+    </svg>
+  );
+}
+
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
 function blank(): Chat {
   return { id: uid(), title: "New chat", messages: [], updated: Date.now() };
+}
+
+function groupLabel(ts: number) {
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(new Date(ts))) / 86400000);
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff < 7) return "Previous 7 days";
+  return "Older";
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -274,6 +344,13 @@ export default function Home() {
   const active = chats.find((c) => c.id === activeId);
   const messages = active?.messages ?? [];
   const sorted = [...chats].sort((a, b) => b.updated - a.updated);
+  const groups: { label: string; items: Chat[] }[] = [];
+  for (const c of sorted) {
+    const label = groupLabel(c.updated);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(c);
+    else groups.push({ label, items: [c] });
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -472,30 +549,41 @@ export default function Home() {
 
       <aside
         className={
-          "zside fixed inset-y-0 left-0 z-30 flex w-72 flex-col transition-transform md:static md:translate-x-0 " +
+          "zside fixed inset-y-0 left-0 z-30 flex w-64 flex-col transition-transform md:static md:translate-x-0 " +
           (sidebar ? "translate-x-0" : "-translate-x-full")
         }
       >
-        <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg text-sm font-semibold text-white" style={{ background: "var(--accent)" }}>
-            Z
-          </div>
-          <span className="zserif text-lg">Ziggy</span>
+        <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
+          <Logo size={28} />
+          <span className="zserif text-xl">Ziggy</span>
         </div>
-        <div className="px-3 pb-2 pt-2">
-          <button onClick={newChat} className="zbtn w-full rounded-lg px-3 py-2 text-left text-sm">
-            + New chat
+        <div className="px-3 pb-2">
+          <button onClick={newChat} className="zitem flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium">
+            <Icon name="plus" size={16} />
+            New chat
           </button>
         </div>
-        <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
-          {sorted.map((c) => (
-            <div key={c.id} className={"zitem flex items-center gap-1 rounded-lg px-3 py-2 text-sm " + (c.id === activeId ? "on" : "")}>
-              <button onClick={() => openChat(c.id)} className="min-w-0 flex-1 truncate text-left">
-                {c.title}
-              </button>
-              <button onClick={() => removeChat(c.id)} aria-label="Delete chat" className="shrink-0 rounded px-1 opacity-60 hover:opacity-100">
-                ?
-              </button>
+        <div className="flex-1 overflow-y-auto px-2 pb-3">
+          {groups.map((g) => (
+            <div key={g.label} className="mb-3">
+              <div className="zmuted px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider">{g.label}</div>
+              {g.items.map((c) => (
+                <div
+                  key={c.id}
+                  className={"zitem group flex items-center gap-1 rounded-lg px-3 py-2 text-sm " + (c.id === activeId ? "on" : "")}
+                >
+                  <button onClick={() => openChat(c.id)} className="min-w-0 flex-1 truncate text-left">
+                    {c.title}
+                  </button>
+                  <button
+                    onClick={() => removeChat(c.id)}
+                    aria-label="Delete chat"
+                    className="shrink-0 rounded p-1 opacity-60 hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -503,20 +591,17 @@ export default function Home() {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <header className="zheader flex items-center justify-between gap-2 px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-3">
-            <button onClick={() => setSidebar(true)} aria-label="Open chats" className="zbtn rounded-lg px-2.5 py-1 md:hidden">
-              ?
+        <header className="flex items-center justify-between gap-2 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSidebar(true)} aria-label="Open chats" className="zghost rounded-lg p-2 md:hidden">
+              <Icon name="menu" />
             </button>
-            <span className="zserif text-lg md:hidden">Ziggy</span>
+            <span className="md:hidden">
+              <Logo size={26} />
+            </span>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <select
-              value={persona}
-              onChange={(e) => setPersona(e.target.value)}
-              aria-label="Personality"
-              className="zbtn rounded-lg px-2 py-1.5 text-sm outline-none"
-            >
+          <div className="flex items-center gap-1.5">
+            <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Personality" className="zselect">
               {PERSONAS.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
@@ -526,34 +611,39 @@ export default function Home() {
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               aria-label="Toggle theme"
-              className="zbtn rounded-lg px-3 py-1.5 text-sm"
+              className="zghost rounded-lg p-2"
             >
-              {theme === "dark" ? "Light" : "Dark"}
+              <Icon name={theme === "dark" ? "sun" : "moon"} />
             </button>
-            <button onClick={newChat} aria-label="New chat" className="zbtn rounded-lg px-3 py-1.5 text-sm md:hidden">
-              +
+            <button onClick={newChat} aria-label="New chat" className="zghost rounded-lg p-2 md:hidden">
+              <Icon name="plus" />
             </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto flex max-w-3xl flex-col gap-7">
+        <main className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="mx-auto flex max-w-[44rem] flex-col gap-7">
             {ready && messages.length === 0 && (
-              <div className="zfade mt-14 text-center sm:mt-24">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-2xl font-semibold text-white" style={{ background: "var(--accent)" }}>
-                  Z
+              <div className="zfade mt-12 text-center sm:mt-20">
+                <div className="mx-auto w-fit">
+                  <Logo size={56} />
                 </div>
-                <h2 className="zserif mt-6 text-4xl">How can I help you today?</h2>
+                <h2 className="zserif mt-6 text-[2rem] leading-tight sm:text-4xl">How can I help you today?</h2>
                 <p className="zmuted mt-2 text-sm">Ask anything, in any language.</p>
                 <div className="mt-9 grid gap-3 text-left sm:grid-cols-2">
                   {IDEAS.map((idea) => (
                     <button
                       key={idea.title}
                       onClick={() => (idea.image ? fileRef.current?.click() : send(idea.text))}
-                      className="zchip rounded-xl p-4 transition"
+                      className="zchip flex items-start gap-3 rounded-xl p-4 transition"
                     >
-                      <div className="text-[15px] font-medium">{idea.title}</div>
-                      <div className="zmuted mt-0.5 text-sm">{idea.sub}</div>
+                      <span className="zmuted mt-0.5">
+                        <Icon name={idea.icon} />
+                      </span>
+                      <span>
+                        <span className="block text-[15px] font-medium">{idea.title}</span>
+                        <span className="zmuted mt-0.5 block text-sm">{idea.sub}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -609,35 +699,40 @@ export default function Home() {
                   </div>
                 )
               ) : (
-                <div key={i} className="zfade">
-                  {m.content ? (
-                    <>
-                      <div className="zmd">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-                          {m.content}
-                        </ReactMarkdown>
-                      </div>
-                      {!(loading && i === messages.length - 1) && (
-                        <div className="-ml-2 mt-2 flex flex-wrap gap-1">
-                          <CopyButton text={m.content} />
-                          <SpeakButton text={m.content} />
-                          {i === messages.length - 1 && (
-                            <button onClick={regenerate} className="zact">
-                              Retry
-                            </button>
-                          )}
+                <div key={i} className="zfade flex items-start gap-3">
+                  <div className="mt-0.5 shrink-0">
+                    <Logo size={26} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {m.content ? (
+                      <>
+                        <div className="zmd">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+                            {m.content}
+                          </ReactMarkdown>
                         </div>
-                      )}
-                    </>
-                  ) : loading && i === messages.length - 1 ? (
-                    <div className="flex items-center gap-1.5 py-2">
-                      <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" />
-                      <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" style={{ animationDelay: "150ms" }} />
-                      <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" style={{ animationDelay: "300ms" }} />
-                    </div>
-                  ) : (
-                    <span className="zmuted text-sm">No reply.</span>
-                  )}
+                        {!(loading && i === messages.length - 1) && (
+                          <div className="-ml-2 mt-2 flex flex-wrap gap-1">
+                            <CopyButton text={m.content} />
+                            <SpeakButton text={m.content} />
+                            {i === messages.length - 1 && (
+                              <button onClick={regenerate} className="zact">
+                                Retry
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : loading && i === messages.length - 1 ? (
+                      <div className="flex items-center gap-1.5 py-2.5">
+                        <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" />
+                        <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" style={{ animationDelay: "150ms" }} />
+                        <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" style={{ animationDelay: "300ms" }} />
+                      </div>
+                    ) : (
+                      <span className="zmuted text-sm">No reply.</span>
+                    )}
+                  </div>
                 </div>
               )
             )}
@@ -646,7 +741,7 @@ export default function Home() {
         </main>
 
         <footer className="px-4 pb-3 pt-2">
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-[44rem]">
             {images.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {images.map((src, k) => (
@@ -655,9 +750,9 @@ export default function Home() {
                     <button
                       onClick={() => setImages((p) => p.filter((_, j) => j !== k))}
                       aria-label="Remove image"
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700 text-xs text-white"
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700 text-white"
                     >
-                      ?
+                      <Icon name="close" size={12} />
                     </button>
                   </div>
                 ))}
@@ -674,23 +769,19 @@ export default function Home() {
                 e.target.value = "";
               }}
             />
-            <div className="zinput flex items-end gap-2 rounded-2xl p-2 pl-2 shadow-lg shadow-black/10">
+            <div className="zinput flex items-end gap-1 rounded-3xl p-2">
               <button
                 onClick={() => fileRef.current?.click()}
                 aria-label="Attach image"
                 title="Attach image"
-                className="zbtn flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                className="zghost flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
               >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <path d="M21 15l-5-5L5 21" />
-                </svg>
+                <Icon name="image" />
               </button>
               <textarea
                 ref={taRef}
                 rows={1}
-                className="max-h-40 flex-1 resize-none bg-transparent py-2.5 text-[15.5px] outline-none"
+                className="max-h-40 flex-1 resize-none bg-transparent px-1 py-2.5 text-[15.5px] outline-none"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onPaste={(e) => {
@@ -714,7 +805,7 @@ export default function Home() {
                     onClick={() => setVoiceIdx((voiceIdx + 1) % VOICES.length)}
                     disabled={listening}
                     title="Voice language (click to change)"
-                    className="zmuted h-10 shrink-0 rounded-lg px-1.5 text-xs font-semibold"
+                    className="zmuted h-10 shrink-0 rounded-full px-1.5 text-[11px] font-semibold"
                   >
                     {VOICES[voiceIdx].label}
                   </button>
@@ -722,14 +813,11 @@ export default function Home() {
                     onClick={toggleVoice}
                     aria-label={listening ? "Stop listening" : "Start voice input"}
                     className={
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg " +
-                      (listening ? "animate-pulse bg-red-500 text-white" : "zbtn")
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full " +
+                      (listening ? "animate-pulse bg-red-500 text-white" : "zghost")
                     }
                   >
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="3" width="6" height="11" rx="3" />
-                      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-                    </svg>
+                    <Icon name="mic" />
                   </button>
                 </>
               )}
@@ -738,21 +826,19 @@ export default function Home() {
                 disabled={!loading && !canSend}
                 aria-label={loading ? "Stop" : "Send"}
                 style={{ background: "var(--accent)" }}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white transition hover:opacity-90 disabled:opacity-40"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition hover:opacity-90 disabled:opacity-35"
               >
                 {loading ? (
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                    <rect x="5" y="5" width="14" height="14" rx="2" />
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
                   </svg>
                 ) : (
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 19V5M5 12l7-7 7 7" />
-                  </svg>
+                  <Icon name="up" />
                 )}
               </button>
             </div>
             {note && <p className="mt-2 text-center text-xs text-amber-500">{note}</p>}
-            <p className="zmuted mt-2 text-center text-xs">Ziggy can make mistakes. Please double-check important information.</p>
+            <p className="zmuted mt-2 text-center text-[11px]">Ziggy can make mistakes. Please double-check important information.</p>
           </div>
         </footer>
       </div>
