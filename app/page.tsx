@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 
-type Msg = { role: "user" | "assistant"; content: string; images?: string[]; imgCount?: number };
+type Msg = { role: "user" | "assistant"; content: string; images?: string[]; imgCount?: number; sources?: { title: string; url: string }[]; docs?: { name: string; text: string }[]; docNames?: string[] };
 type Chat = { id: string; title: string; messages: Msg[]; updated: number };
 type Theme = "dark" | "light";
 type Idea = { title: string; sub: string; text: string; icon: string; image?: boolean };
@@ -26,6 +26,8 @@ const OLD_KEY = "ziggy-chat-v1";
 const THEME_KEY = "ziggy-theme";
 const PERSONA_KEY = "ziggy-persona-v2";
 const MAX_IMAGES = 3;
+const WEB_KEY = "ziggy-web";
+const CUSTOM_KEY = "ziggy-custom";
 
 const PERSONAS = [
   { id: "professional", label: "Professional" },
@@ -102,9 +104,45 @@ const CSS = `
 .zmd th{text-align:left;padding:.55rem .8rem;font-weight:600;border-bottom:1px solid var(--border)}
 .zmd td{padding:.55rem .8rem;border-top:1px solid var(--border)}
 .zscroll{overflow-x:auto;border:1px solid var(--border);border-radius:.75rem;margin:.8rem 0}
+.zcode{position:relative}
+.zcopy{position:absolute;top:.6rem;right:.6rem;z-index:1;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:.4rem;padding:.15rem .5rem}
+.zcopy:hover{color:var(--text)}
 `;
 
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  if (node && typeof node === "object" && "props" in node) {
+    return textOf((node as { props: { children?: ReactNode } }).props.children);
+  }
+  return "";
+}
+
+function Pre({ children }: { children?: ReactNode }) {
+  const [done, setDone] = useState(false);
+  return (
+    <div className="zcode">
+      <button
+        onClick={() => {
+          navigator.clipboard
+            ?.writeText(textOf(children).replace(/\n$/, ""))
+            .then(() => {
+              setDone(true);
+              setTimeout(() => setDone(false), 1500);
+            })
+            .catch(() => {});
+        }}
+        className="zcopy"
+      >
+        {done ? "Copied" : "Copy"}
+      </button>
+      <pre>{children}</pre>
+    </div>
+  );
+}
+
 const mdComponents: Components = {
+  pre: ({ children }) => <Pre>{children}</Pre>,
   table: ({ children }) => (
     <div className="zscroll">
       <table>{children}</table>
@@ -160,6 +198,20 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
         <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
       </>
     ),
+    sliders: (
+      <>
+        <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
+        <circle cx="16" cy="6" r="2" />
+        <circle cx="10" cy="12" r="2" />
+        <circle cx="18" cy="18" r="2" />
+      </>
+    ),
+    globe: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+      </>
+    ),
     up: <path d="M12 19V5M5 12l7-7 7 7" />,
   };
   return (
@@ -167,6 +219,14 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
       {paths[name]}
     </svg>
   );
+}
+
+function hostOf(u: string) {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return u;
+  }
 }
 
 function uid() {
@@ -279,6 +339,10 @@ export default function Home() {
   const [voiceIdx, setVoiceIdx] = useState(0);
   const [voiceOk, setVoiceOk] = useState(false);
   const [note, setNote] = useState("");
+  const [docs, setDocs] = useState<{ name: string; text: string }[]>([]);
+  const [custom, setCustom] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [web, setWeb] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -307,6 +371,8 @@ export default function Home() {
       if (th === "light" || th === "dark") setTheme(th);
       const pe = localStorage.getItem(PERSONA_KEY);
       if (pe && PERSONAS.some((p) => p.id === pe)) setPersona(pe);
+      setWeb(localStorage.getItem(WEB_KEY) === "1");
+      setCustom(localStorage.getItem(CUSTOM_KEY) ?? "");
     } catch {}
     if (!Array.isArray(list)) list = [];
     if (list.length === 0) {
@@ -331,15 +397,17 @@ export default function Home() {
         .map((c) => ({
           ...c,
           messages: c.messages.map((m) =>
-            m.images && m.images.length > 0 ? { role: m.role, content: m.content, imgCount: m.images.length } : m
+            (m.images && m.images.length > 0) || (m.docs && m.docs.length > 0) ? { role: m.role, content: m.content, imgCount: m.images ? m.images.length : undefined, docNames: m.docs ? m.docs.map((d) => d.name) : undefined } : m
           ),
         }));
       localStorage.setItem(CHATS_KEY, JSON.stringify(keep));
       localStorage.setItem(ACTIVE_KEY, activeId);
       localStorage.setItem(THEME_KEY, theme);
       localStorage.setItem(PERSONA_KEY, persona);
+      localStorage.setItem(WEB_KEY, web ? "1" : "0");
+      localStorage.setItem(CUSTOM_KEY, custom);
     } catch {}
-  }, [chats, activeId, theme, persona, ready]);
+  }, [chats, activeId, theme, persona, web, custom, ready]);
 
   const active = chats.find((c) => c.id === activeId);
   const messages = active?.messages ?? [];
@@ -387,6 +455,7 @@ export default function Home() {
     }
     const b = blank();
     setChats((p) => [b, ...p]);
+    setDocs([]);
     setActiveId(b.id);
     setInput("");
     setImages([]);
@@ -424,6 +493,49 @@ export default function Home() {
       setNote("");
     } catch {
       setNote("Could not read that image. Please try a JPG or PNG.");
+    }
+  }
+
+  async function readDoc(f: File): Promise<string> {
+    const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+    if (isPdf) {
+      if (f.size > 4_000_000) throw new Error("That PDF is larger than 4 MB.");
+      const r = await fetch("/api/extract", { method: "POST", headers: { "Content-Type": "application/pdf" }, body: f });
+      const j = (await r.json()) as { text?: string; error?: string };
+      if (!r.ok) throw new Error(j.error || "Could not read that PDF.");
+      return j.text ?? "";
+    }
+    if (!/\.(txt|md|csv|json|log|py|js|ts|tsx|jsx|html|css)$/i.test(f.name) && !f.type.startsWith("text/")) {
+      throw new Error("Unsupported file type. Please use a PDF or a text file.");
+    }
+    if (f.size > 1_000_000) throw new Error("That file is larger than 1 MB.");
+    return await f.text();
+  }
+
+  async function addAny(list: FileList | null) {
+    if (!list) return;
+    const all = Array.from(list);
+    const imgs = all.filter((f) => f.type.startsWith("image/"));
+    const rest = all.filter((f) => !f.type.startsWith("image/"));
+    if (imgs.length > 0) await addFiles(imgs);
+    let count = docs.length;
+    for (const f of rest) {
+      if (count >= 2) {
+        setNote("You can attach up to 2 documents per message.");
+        break;
+      }
+      try {
+        const text = (await readDoc(f)).trim();
+        if (!text) {
+          setNote("No readable text found in " + f.name + ". Scanned PDFs are not supported.");
+          continue;
+        }
+        setDocs((p) => [...p, { name: f.name, text: text.slice(0, 10000) }]);
+        count += 1;
+        setNote(text.length > 10000 ? "Only the first part of long documents is read." : "");
+      } catch (e) {
+        setNote(e instanceof Error ? e.message : "Could not read that file.");
+      }
     }
   }
 
@@ -478,21 +590,31 @@ export default function Home() {
     abortRef.current = controller;
     let acc = "";
     try {
-      const payload = base.map((m) => ({ role: m.role, content: m.content, images: m.images }));
+      const payload = base.map((m) => ({ role: m.role, content: m.content, images: m.images, docs: m.docs }));
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: payload, persona }),
+        body: JSON.stringify({ messages: payload, persona, web, custom }),
         signal: controller.signal,
       });
+      if (res.status === 429) {
+        setMsgs(chatId, [...base, { role: "assistant", content: "You have reached the usage limit for now. Please wait a little and try again." }]);
+        setLoading(false);
+        return;
+      }
       if (!res.ok || !res.body) throw new Error("bad response");
+      let sources: { title: string; url: string }[] | undefined;
+      try {
+        const h = res.headers.get("x-ziggy-sources");
+        if (h) sources = JSON.parse(decodeURIComponent(h));
+      } catch {}
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-        setMsgs(chatId, [...base, { role: "assistant", content: acc }]);
+        setMsgs(chatId, [...base, { role: "assistant", content: acc, sources }]);
       }
       if (!acc) {
         setMsgs(chatId, [...base, { role: "assistant", content: "I did not get a reply. Please try again." }]);
@@ -509,15 +631,17 @@ export default function Home() {
 
   function send(text?: string) {
     const content = (text ?? input).trim();
-    if ((!content && images.length === 0) || loading || !active) return;
+    if ((!content && images.length === 0 && docs.length === 0) || loading || !active) return;
     recRef.current?.stop();
     const userMsg: Msg = { role: "user", content };
     if (images.length > 0) userMsg.images = images;
+    if (docs.length > 0) userMsg.docs = docs;
     const next: Msg[] = [...active.messages, userMsg];
-    const title = active.messages.length === 0 ? content.slice(0, 40) || "Image chat" : undefined;
+    const title = active.messages.length === 0 ? content.slice(0, 40) || (docs.length > 0 ? docs[0].name.slice(0, 40) : "Image chat") : undefined;
     setInput("");
     setImages([]);
     setEditing(null);
+    setDocs([]);
     run(active.id, next, title);
   }
 
@@ -539,11 +663,40 @@ export default function Home() {
     run(active.id, active.messages.slice(0, lastUser + 1));
   }
 
-  const canSend = input.trim().length > 0 || images.length > 0;
+  const canSend = input.trim().length > 0 || images.length > 0 || docs.length > 0;
 
   return (
     <div className={"zroot relative flex h-dvh overflow-hidden " + theme}>
       <style>{CSS}</style>
+
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowSettings(false)}>
+          <div
+            className="zside w-full max-w-lg rounded-2xl p-5"
+            style={{ border: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="zserif text-xl">Custom instructions</h3>
+            <p className="zmuted mt-1 text-sm">Tell Ziggy how to respond. This applies to every chat.</p>
+            <textarea
+              value={custom}
+              onChange={(e) => setCustom(e.target.value.slice(0, 800))}
+              rows={6}
+              placeholder="For example: My name is Nasir. I am a student. Keep answers short and use simple English."
+              className="zinput mt-4 w-full resize-none rounded-xl p-3 text-[15px] outline-none"
+            />
+            <div className="zmuted mt-1 text-xs">{custom.length}/800</div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setCustom("")} className="zbtn rounded-lg px-3 py-1.5 text-sm">
+                Clear
+              </button>
+              <button onClick={() => setShowSettings(false)} style={{ background: "var(--accent)" }} className="rounded-lg px-4 py-1.5 text-sm text-white">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {sidebar && <div className="fixed inset-0 z-20 bg-black/50 md:hidden" onClick={() => setSidebar(false)} />}
 
@@ -601,6 +754,20 @@ export default function Home() {
             </span>
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setWeb(!web)}
+              aria-pressed={web}
+              aria-label="Web search"
+              title="Search the web for current information"
+              className={"flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm " + (web ? "text-white" : "zghost")}
+              style={web ? { background: "var(--accent)", borderColor: "var(--accent)" } : { borderColor: "var(--border)" }}
+            >
+              <Icon name="globe" size={16} />
+              <span className="hidden sm:inline">Web</span>
+            </button>
+            <button onClick={() => setShowSettings(true)} aria-label="Settings" title="Custom instructions" className="zghost rounded-lg p-2">
+              <Icon name="sliders" />
+            </button>
             <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Personality" className="zselect">
               {PERSONAS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -686,6 +853,18 @@ export default function Home() {
                           ))}
                         </div>
                       )}
+                      {m.docs && m.docs.length > 0 && (
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {m.docs.map((d, k) => (
+                            <span key={k} className="zchip zmuted rounded-lg px-2.5 py-1 text-xs">
+                              {d.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {!m.docs && m.docNames && m.docNames.length > 0 && (
+                        <div className="zmuted mb-1 text-xs">Document attached: {m.docNames.join(", ")} (not kept after reload)</div>
+                      )}
                       {!m.images && m.imgCount ? (
                         <div className="zmuted mb-1 text-xs">Image attached (not kept after reload)</div>
                       ) : null}
@@ -711,6 +890,22 @@ export default function Home() {
                             {m.content}
                           </ReactMarkdown>
                         </div>
+                        {m.sources && m.sources.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {m.sources.map((s, k) => (
+                              <a
+                                key={k}
+                                href={s.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={s.title}
+                                className="zchip zmuted max-w-[14rem] truncate rounded-lg px-2.5 py-1 text-xs"
+                              >
+                                {k + 1}. {hostOf(s.url)}
+                              </a>
+                            ))}
+                          </div>
+                        )}
                         {!(loading && i === messages.length - 1) && (
                           <div className="-ml-2 mt-2 flex flex-wrap gap-1">
                             <CopyButton text={m.content} />
@@ -728,6 +923,7 @@ export default function Home() {
                         <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" />
                         <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" style={{ animationDelay: "150ms" }} />
                         <span className="zdot h-1.5 w-1.5 animate-bounce rounded-full" style={{ animationDelay: "300ms" }} />
+                        {web && <span className="zmuted ml-2 text-sm">Searching the web</span>}
                       </div>
                     ) : (
                       <span className="zmuted text-sm">No reply.</span>
@@ -742,6 +938,22 @@ export default function Home() {
 
         <footer className="px-4 pb-3 pt-2">
           <div className="mx-auto max-w-[44rem]">
+            {docs.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {docs.map((d, k) => (
+                  <span key={k} className="zchip zmuted flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs">
+                    {d.name}
+                    <button
+                      onClick={() => setDocs((p) => p.filter((_, j) => j !== k))}
+                      aria-label="Remove document"
+                      className="opacity-70 hover:opacity-100"
+                    >
+                      <Icon name="close" size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {images.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {images.map((src, k) => (
@@ -761,11 +973,11 @@ export default function Home() {
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.pdf,.txt,.md,.csv,.json,.log,text/plain"
               multiple
               className="hidden"
               onChange={(e) => {
-                addFiles(e.target.files);
+                addAny(e.target.files);
                 e.target.value = "";
               }}
             />
@@ -773,7 +985,7 @@ export default function Home() {
               <button
                 onClick={() => fileRef.current?.click()}
                 aria-label="Attach image"
-                title="Attach image"
+                title="Attach image or document"
                 className="zghost flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
               >
                 <Icon name="image" />
@@ -838,7 +1050,11 @@ export default function Home() {
               </button>
             </div>
             {note && <p className="mt-2 text-center text-xs text-amber-500">{note}</p>}
-            <p className="zmuted mt-2 text-center text-[11px]">Ziggy can make mistakes. Please double-check important information.</p>
+            <p className="zmuted mt-2 text-center text-[11px]">Ziggy can make mistakes. Please double-check important information.{" "}
+              <a href="/privacy" className="underline">
+                Privacy
+              </a>
+            </p>
           </div>
         </footer>
       </div>

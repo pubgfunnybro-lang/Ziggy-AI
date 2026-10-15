@@ -19,7 +19,7 @@ const PERSONAS: Record<string, string> = {
 
 type Part = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 type OutMsg = { role: "user" | "assistant"; content: string | Part[] };
-type InMsg = { role?: string; content?: string; images?: unknown };
+type InMsg = { role?: string; content?: string; images?: unknown; docs?: unknown };
 type Attempt = { model: string; extra: Record<string, unknown> };
 type Source = { title: string; url: string };
 type Check = { key: string; ttl: number; max: number };
@@ -119,13 +119,17 @@ export async function POST(req: Request) {
       return new Response("Too many messages. Please wait a while.", { status: 429 });
     }
 
-    const { messages, persona, web } = await req.json();
+    const { messages, persona, web, custom } = await req.json();
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response("Bad request", { status: 400 });
     }
 
     const key = typeof persona === "string" && persona in PERSONAS ? persona : "professional";
     let system = PERSONAS[key] ? SYSTEM + "\n" + PERSONAS[key] : SYSTEM;
+    const customNote = typeof custom === "string" ? custom.trim().slice(0, 800) : "";
+    if (customNote) {
+      system += "\n\nThe user's custom instructions (follow them unless they conflict with safety or accuracy):\n" + customNote;
+    }
 
     const raw: InMsg[] = messages.slice(-20);
     let lastImg = -1;
@@ -133,8 +137,27 @@ export async function POST(req: Request) {
       if (m.role === "user" && Array.isArray(m.images) && m.images.length > 0) lastImg = i;
     });
 
+    let lastDoc = -1;
+    raw.forEach((m, i) => {
+      if (m.role === "user" && Array.isArray(m.docs) && m.docs.length > 0) lastDoc = i;
+    });
+
     const clean: OutMsg[] = raw.map((m, i) => {
-      const text = String(m.content ?? "").slice(0, MAX_CHARS);
+      let text = String(m.content ?? "").slice(0, MAX_CHARS);
+      if (i === lastDoc) {
+        let budget = 10000;
+        const blocks: string[] = [];
+        for (const d of (m.docs as unknown[]).slice(0, 2)) {
+          const o = d as { name?: unknown; text?: unknown };
+          if (typeof o.text !== "string" || !o.text.trim() || budget <= 0) continue;
+          const body = o.text.slice(0, budget);
+          budget -= body.length;
+          blocks.push("--- Document: " + String(o.name ?? "file").slice(0, 80) + " ---\n" + body);
+        }
+        if (blocks.length > 0) {
+          text = (text || "Please summarize this document.") + "\n\nAttached document content (may be truncated):\n\n" + blocks.join("\n\n");
+        }
+      }
       if (i === lastImg) {
         const imgs = (m.images as unknown[])
           .filter((u): u is string => typeof u === "string" && IMG_RE.test(u) && u.length < MAX_IMG)
