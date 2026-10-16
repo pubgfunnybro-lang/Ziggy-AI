@@ -15,7 +15,7 @@ export default function Privacy() {
       <p>Last updated: October 2026</p>
       <ul style={{ paddingLeft: 20, marginTop: 24, display: "grid", gap: 14 }}>
         <li>
-          <strong>Your chats stay in your browser.</strong> Ziggy has no accounts and does not keep a database of conversations. Deleting a chat, or clearing your browser data, removes it.
+          <strong>Chats.</strong> Without an account, your chats stay in your browser only. If you create an account, your chats are also saved as text (without images or documents) on Ziggy&apos;s server so they sync across your devices. Accounts use a username and a password, and the password is stored only as a salted hash. Passwords cannot be recovered, and you can delete your account and its saved chats at any time from the sidebar.
         </li>
         <li>
           <strong>What is sent when you chat.</strong> Your message, the earlier messages of that conversation, your custom instructions, and any attached images or document text are sent to Ziggy&apos;s server and forwarded to Groq to generate the reply. Ziggy does not store them afterwards.
@@ -28,6 +28,9 @@ export default function Privacy() {
         </li>
         <li>
           <strong>Analytics.</strong> Anonymous page-view statistics are collected with Vercel Web Analytics.
+        </li>
+        <li>
+          <strong>Feedback.</strong> If you press the thumbs up or thumbs down under an answer, a short snippet of that question and answer is saved so Ziggy can be improved.
         </li>
         <li>
           <strong>Please be careful.</strong> Do not share passwords, ID numbers or other sensitive information. Ziggy can make mistakes, so double-check anything important.

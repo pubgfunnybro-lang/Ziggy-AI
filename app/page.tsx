@@ -214,6 +214,8 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
         <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
       </>
     ),
+    thumbup: <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />,
+    thumbdown: <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />,
     up: <path d="M12 19V5M5 12l7-7 7 7" />,
   };
   return (
@@ -326,6 +328,78 @@ function SpeakButton({ text }: { text: string }) {
   );
 }
 
+function sizeOf(c: Chat) {
+  return c.messages.reduce((n, m) => n + m.content.length, 0);
+}
+
+function sigOf(list: Chat[]) {
+  return list
+    .filter((c) => c.messages.length > 0)
+    .map((c) => c.id + ":" + c.updated + ":" + sizeOf(c))
+    .sort()
+    .join("|");
+}
+
+function strip(c: Chat): Chat {
+  return {
+    ...c,
+    messages: c.messages.map((m) => {
+      const { images, docs, ...rest } = m as Msg & { docs?: unknown };
+      void docs;
+      return { ...rest, imgCount: images ? images.length : rest.imgCount };
+    }),
+  };
+}
+
+function mergeChats(a: Chat[], b: Chat[], dead: string[]): Chat[] {
+  const gone = new Set(dead);
+  const map = new Map<string, Chat>();
+  for (const c of [...a, ...b]) {
+    if (gone.has(c.id)) continue;
+    const cur = map.get(c.id);
+    if (!cur || c.updated > cur.updated || (c.updated === cur.updated && sizeOf(c) > sizeOf(cur))) map.set(c.id, c);
+  }
+  return [...map.values()];
+}
+
+function Feedback({ q, a, persona }: { q: string; a: string; persona: string }) {
+  const [vote, setVote] = useState<"up" | "down" | null>(null);
+  function cast(v: "up" | "down") {
+    if (vote) return;
+    setVote(v);
+    fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vote: v, q, a, persona }),
+    }).catch(() => {});
+  }
+  return (
+    <>
+      <button
+        onClick={() => cast("up")}
+        disabled={vote !== null}
+        aria-label="Good answer"
+        title="Good answer"
+        className="zact"
+        style={vote === "up" ? { color: "var(--accent)" } : undefined}
+      >
+        <Icon name="thumbup" size={14} />
+      </button>
+      <button
+        onClick={() => cast("down")}
+        disabled={vote !== null}
+        aria-label="Bad answer"
+        title="Bad answer"
+        className="zact"
+        style={vote === "down" ? { color: "var(--accent)" } : undefined}
+      >
+        <Icon name="thumbdown" size={14} />
+      </button>
+      {vote && <span className="zmuted self-center text-xs">Thanks for the feedback</span>}
+    </>
+  );
+}
+
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeId, setActiveId] = useState("");
@@ -341,6 +415,16 @@ export default function Home() {
   const [voiceIdx, setVoiceIdx] = useState(0);
   const [voiceOk, setVoiceOk] = useState(false);
   const [note, setNote] = useState("");
+  const [user, setUser] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authName, setAuthName] = useState("");
+  const [authPass, setAuthPass] = useState("");
+  const [authErr, setAuthErr] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const chatsRef = useRef<Chat[]>([]);
+  const deletedRef = useRef<string[]>([]);
+  const lastSigRef = useRef("");
   const [docs, setDocs] = useState<{ name: string; text: string }[]>([]);
   const [custom, setCustom] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -411,6 +495,133 @@ export default function Home() {
     } catch {}
   }, [chats, activeId, theme, persona, web, custom, ready]);
 
+  chatsRef.current = chats;
+
+  useEffect(() => {
+    try {
+      const d = localStorage.getItem("ziggy-deleted");
+      if (d) deletedRef.current = JSON.parse(d);
+    } catch {}
+    fetch("/api/auth")
+      .then((r) => r.json())
+      .then((j: { user?: string | null }) => setUser(j.user ?? null))
+      .catch(() => {});
+  }, []);
+
+  function rememberDeleted(id: string) {
+    deletedRef.current = [...deletedRef.current.filter((x) => x !== id), id].slice(-300);
+    try {
+      localStorage.setItem("ziggy-deleted", JSON.stringify(deletedRef.current));
+    } catch {}
+  }
+
+  async function syncChats(force = false): Promise<boolean> {
+    const cur = chatsRef.current;
+    if (!force && sigOf(cur) === lastSigRef.current) return true;
+    try {
+      const mine = cur.filter((c) => c.messages.length > 0).map(strip);
+      const r = await fetch("/api/sync", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chats: mine, deleted: deletedRef.current }),
+      });
+      if (r.status === 401) {
+        setUser(null);
+        return false;
+      }
+      if (!r.ok) return false;
+      const j = (await r.json()) as { chats?: Chat[]; deleted?: string[] };
+      deletedRef.current = (j.deleted ?? []).slice(-300);
+      try {
+        localStorage.setItem("ziggy-deleted", JSON.stringify(deletedRef.current));
+      } catch {}
+      const merged = mergeChats(chatsRef.current, j.chats ?? [], j.deleted ?? []);
+      if (merged.length === 0) merged.push(blank());
+      lastSigRef.current = sigOf(merged);
+      setChats(merged);
+      setActiveId((a) => (merged.some((c) => c.id === a) ? a : [...merged].sort((x, y) => y.updated - x.updated)[0].id));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  useEffect(() => {
+    if (ready && user) syncChats(true);
+  }, [user, ready]);
+
+  useEffect(() => {
+    if (!ready || !user || loading) return;
+    if (sigOf(chats) === lastSigRef.current) return;
+    const id = setTimeout(() => {
+      syncChats();
+    }, 2000);
+    return () => clearTimeout(id);
+  }, [chats, user, ready, loading]);
+
+  async function submitAuth() {
+    if (authBusy) return;
+    setAuthBusy(true);
+    setAuthErr("");
+    try {
+      const r = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: authMode, username: authName, password: authPass }),
+      });
+      const j = (await r.json()) as { user?: string; error?: string };
+      if (!r.ok || !j.user) {
+        setAuthErr(j.error || "Something went wrong.");
+      } else {
+        setUser(j.user);
+        setAuthOpen(false);
+        setAuthPass("");
+        setAuthName("");
+      }
+    } catch {
+      setAuthErr("Network error. Please try again.");
+    }
+    setAuthBusy(false);
+  }
+
+  async function logout() {
+    const ok = await syncChats(true);
+    try {
+      await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "logout" }),
+      });
+    } catch {}
+    setUser(null);
+    lastSigRef.current = "";
+    if (ok) {
+      deletedRef.current = [];
+      try {
+        localStorage.removeItem("ziggy-deleted");
+      } catch {}
+      const b = blank();
+      setChats([b]);
+      setActiveId(b.id);
+    } else {
+      setNote("Could not sync before signing out, so your chats were kept on this device.");
+    }
+    setSidebar(false);
+  }
+
+  async function deleteAccount() {
+    if (!window.confirm("Delete your account and all chats saved on the server? Chats on this device will stay.")) return;
+    try {
+      await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete" }),
+      });
+    } catch {}
+    setUser(null);
+    lastSigRef.current = "";
+  }
+
   const active = chats.find((c) => c.id === activeId);
   const messages = active?.messages ?? [];
   const sorted = [...chats].sort((a, b) => b.updated - a.updated);
@@ -465,6 +676,7 @@ export default function Home() {
   }
 
   function removeChat(id: string) {
+    rememberDeleted(id);
     if (loading && id === activeId) stop();
     const rest = chats.filter((c) => c.id !== id);
     if (rest.length === 0) {
@@ -700,6 +912,57 @@ export default function Home() {
         </div>
       )}
 
+      {authOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setAuthOpen(false)}>
+          <div
+            className="zside w-full max-w-sm rounded-2xl p-5"
+            style={{ border: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="zserif text-xl">{authMode === "login" ? "Sign in" : "Create account"}</h3>
+            <p className="zmuted mt-1 text-sm">Your chats will sync across your devices.</p>
+            <input
+              value={authName}
+              onChange={(e) => setAuthName(e.target.value)}
+              placeholder="Username"
+              autoComplete="username"
+              autoCapitalize="none"
+              className="zinput mt-4 w-full rounded-xl p-3 text-[15px] outline-none"
+            />
+            <input
+              value={authPass}
+              onChange={(e) => setAuthPass(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submitAuth()}
+              type="password"
+              placeholder="Password (8+ characters)"
+              autoComplete={authMode === "login" ? "current-password" : "new-password"}
+              className="zinput mt-3 w-full rounded-xl p-3 text-[15px] outline-none"
+            />
+            {authErr && <p className="mt-2 text-sm text-red-400">{authErr}</p>}
+            {authMode === "register" && (
+              <p className="zmuted mt-2 text-xs">There is no password reset, so please remember your password.</p>
+            )}
+            <button
+              onClick={submitAuth}
+              disabled={authBusy}
+              style={{ background: "var(--accent)" }}
+              className="mt-4 w-full rounded-lg px-4 py-2 text-sm text-white disabled:opacity-50"
+            >
+              {authBusy ? "Please wait" : authMode === "login" ? "Sign in" : "Create account"}
+            </button>
+            <button
+              onClick={() => {
+                setAuthMode(authMode === "login" ? "register" : "login");
+                setAuthErr("");
+              }}
+              className="zmuted mt-3 w-full text-center text-sm underline"
+            >
+              {authMode === "login" ? "New here? Create an account" : "Already have an account? Sign in"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {sidebar && <div className="fixed inset-0 z-20 bg-black/50 md:hidden" onClick={() => setSidebar(false)} />}
 
       <aside
@@ -742,7 +1005,36 @@ export default function Home() {
             </div>
           ))}
         </div>
-        <p className="zmuted px-4 pb-3 text-xs">Chats are saved in this browser only.</p>
+        <div className="px-3 pb-3">
+          {user ? (
+            <div className="zmuted text-xs">
+              <div className="px-1 pb-2">
+                Signed in as <span className="font-medium" style={{ color: "var(--text)" }}>{user}</span>. Chats sync to your account.
+              </div>
+              <div className="flex gap-2">
+                <button onClick={logout} className="zbtn rounded-lg px-3 py-1.5 text-xs">
+                  Sign out
+                </button>
+                <button onClick={deleteAccount} className="zghost rounded-lg px-2 py-1.5 text-xs">
+                  Delete account
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="zmuted text-xs">
+              <button
+                onClick={() => {
+                  setAuthOpen(true);
+                  setAuthErr("");
+                }}
+                className="zbtn w-full rounded-lg px-3 py-2 text-sm"
+              >
+                Sign in to sync chats
+              </button>
+              <p className="px-1 pt-2">Without an account, chats stay in this browser only.</p>
+            </div>
+          )}
+        </div>
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -912,6 +1204,7 @@ export default function Home() {
                           <div className="-ml-2 mt-2 flex flex-wrap gap-1">
                             <CopyButton text={m.content} />
                             <SpeakButton text={m.content} />
+                            <Feedback key={activeId + ":" + i + ":" + m.content.length} q={messages[i - 1]?.content ?? ""} a={m.content} persona={persona} />
                             {i === messages.length - 1 && (
                               <button onClick={regenerate} className="zact">
                                 Retry
