@@ -88,7 +88,8 @@ const CSS = `
 .zmd h1{font-size:1.3rem}
 .zmd h2{font-size:1.15rem}
 .zmd h3{font-size:1.05rem}
-.zmd strong{font-weight:600}
+.zmd strong{font-weight:600;background:linear-gradient(transparent 58%,rgba(217,119,87,.4) 58%);padding:0 .14em;border-radius:.15em;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.zroot.light .zmd strong{background:linear-gradient(transparent 58%,rgba(217,119,87,.32) 58%)}
 .zmd em{font-style:italic}
 .zmd ul{list-style:disc;padding-left:1.4rem;margin:0 0 .85rem}
 .zmd ol{list-style:decimal;padding-left:1.4rem;margin:0 0 .85rem}
