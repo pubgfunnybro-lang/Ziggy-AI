@@ -469,6 +469,9 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [web, setWeb] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLElement>(null);
+  const stickRef = useRef(true);
+  const lastChatRef = useRef("");
   const abortRef = useRef<AbortController | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<SpeechRec | null>(null);
@@ -675,7 +678,13 @@ export default function Home() {
   }
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    if (lastChatRef.current !== activeId) {
+      lastChatRef.current = activeId;
+      stickRef.current = true;
+    }
+    if (stickRef.current) el.scrollTop = el.scrollHeight;
   }, [messages, activeId]);
 
   useEffect(() => {
@@ -880,6 +889,7 @@ export default function Home() {
   }
 
   async function run(chatId: string, base: Msg[], title?: string) {
+    stickRef.current = true;
     setChats((p) =>
       p.map((c) =>
         c.id === chatId
@@ -1245,7 +1255,15 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto px-4 py-4">
+        <main
+          ref={scrollRef}
+          onScroll={() => {
+            const el = scrollRef.current;
+            if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+          }}
+          style={{ overflowAnchor: "none" }}
+          className="flex-1 overflow-y-auto px-4 py-4"
+        >
           <div className="mx-auto flex max-w-[44rem] flex-col gap-7">
             {ready && messages.length === 0 && (
               <div className="zfade mt-12 text-center sm:mt-20">
