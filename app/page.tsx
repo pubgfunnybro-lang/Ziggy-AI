@@ -108,6 +108,37 @@ const CSS = `
 .zcode{position:relative}
 .zcopy{position:absolute;top:.6rem;right:.6rem;z-index:1;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:.4rem;padding:.15rem .5rem}
 .zcopy:hover{color:var(--text)}
+.zroot{--bg:#1a1918;--text:#ebe9e4;--muted:#99968f;--border:rgba(255,255,255,.08);--surface:rgba(255,255,255,.05);--userbg:#2a2826;--side:#151413;--input:#242220;--codebg:#131211;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;letter-spacing:-.003em}
+.zroot.light{--bg:#faf9f6;--text:#1c1b19;--muted:#6a675f;--border:rgba(0,0,0,.09);--surface:rgba(0,0,0,.045);--userbg:#efede5;--side:#f3f1ea;--input:#ffffff;--codebg:#f3f1ea}
+.zroot ::selection{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+.zroot button:focus-visible,.zroot a:focus-visible,.zroot select:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent);outline-offset:2px}
+.zmd{font-size:16px;line-height:1.75}
+.zmd p{margin:0 0 1rem}
+.zmd p:last-child{margin-bottom:0}
+.zmd h1,.zmd h2,.zmd h3{margin:1.5rem 0 .6rem;letter-spacing:-.01em}
+.zmd h1:first-child,.zmd h2:first-child,.zmd h3:first-child{margin-top:0}
+.zmd h2{font-size:1.2rem}
+.zmd li{margin:.4rem 0}
+.zmd strong,.zroot.light .zmd strong{font-weight:600;color:inherit;background:none;padding:0;border-radius:0}
+.zmd pre{border-radius:.85rem;padding:1rem 1.1rem;line-height:1.65}
+.zmd code{font-size:13.5px}
+.zmd th{background:var(--surface);font-size:13px}
+.zscroll{border-radius:.85rem}
+.zcopy{top:.55rem;right:.55rem;border-radius:.45rem;opacity:.7;transition:opacity .15s}
+.zcode:hover .zcopy,.zcopy:focus-visible{opacity:1}
+.zside{box-shadow:1px 0 0 var(--border)}
+.zitem{border-radius:.6rem;transition:background .12s,color .12s}
+.zitem.on{background:var(--surface);box-shadow:inset 2px 0 0 var(--accent)}
+.zuser{border-radius:1.25rem 1.25rem .4rem 1.25rem;line-height:1.65}
+.zinput{border-radius:1.5rem;box-shadow:0 1px 2px rgba(0,0,0,.12),0 8px 30px rgba(0,0,0,.16);transition:border-color .15s,box-shadow .15s}
+.zinput:focus-within{border-color:color-mix(in srgb,var(--accent) 55%,var(--border));box-shadow:0 1px 2px rgba(0,0,0,.12),0 10px 34px rgba(0,0,0,.2),0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent)}
+.zroot footer{padding-bottom:max(.75rem,env(safe-area-inset-bottom))}
+.zchip{border-radius:.9rem;transition:transform .15s,background .15s,border-color .15s,box-shadow .15s}
+.zchip:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+button.zchip:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.12)}
+.zactions{opacity:.6;transition:opacity .15s}
+.zfade:hover .zactions,.zactions:focus-within{opacity:1}
+@media (hover:none){.zactions{opacity:1}}
 `;
 
 function textOf(node: ReactNode): string {
@@ -1221,7 +1252,9 @@ export default function Home() {
                 <div className="mx-auto w-fit">
                   <Logo size={56} />
                 </div>
-                <h2 className="zserif mt-6 text-[2rem] leading-tight sm:text-4xl">How can I help you today?</h2>
+                <h2 className="zserif mt-6 text-[2rem] leading-tight sm:text-4xl">
+                  {user ? "Welcome back, " + user.split("_")[0].replace(/^./, (c) => c.toUpperCase()) : "How can I help you today?"}
+                </h2>
                 <p className="zmuted mt-2 text-sm">Ask anything, in any language.</p>
                 <div className="mt-9 grid gap-3 text-left sm:grid-cols-2">
                   {IDEAS.map((idea) => (
@@ -1333,7 +1366,7 @@ export default function Home() {
                           </div>
                         )}
                         {!(loading && i === messages.length - 1) && (
-                          <div className="-ml-2 mt-2 flex flex-wrap gap-1">
+                          <div className="zactions -ml-2 mt-2 flex flex-wrap gap-1">
                             <CopyButton text={m.content} />
                             <SpeakButton text={m.content} />
                             <Feedback key={activeId + ":" + i + ":" + m.content.length} q={messages[i - 1]?.content ?? ""} a={m.content} persona={persona} />
