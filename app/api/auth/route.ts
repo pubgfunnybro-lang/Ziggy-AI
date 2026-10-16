@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     if (action === "delete") {
       const me = userFrom(req);
       if (!me) return err("Please sign in first.", 401);
-      await rcall([["DEL", "zu:" + me], ["DEL", "zc:" + me]]);
+      await rcall([["DEL", "zu:" + me], ["DEL", "zc:" + me], ["DEL", "zm:" + me]]);
       return Response.json({ ok: true }, { headers: { "Set-Cookie": clearCookie() } });
     }
 

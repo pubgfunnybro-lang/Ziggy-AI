@@ -1,3 +1,5 @@
+import { userFrom, rcall } from "../../lib/server";
+
 export const maxDuration = 30;
 
 const SYSTEM = `You are Ziggy, a professional AI assistant.
@@ -119,7 +121,7 @@ export async function POST(req: Request) {
       return new Response("Too many messages. Please wait a while.", { status: 429 });
     }
 
-    const { messages, persona, web, custom } = await req.json();
+    const { messages, persona, web, custom, memory } = await req.json();
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response("Bad request", { status: 400 });
     }
@@ -136,6 +138,22 @@ export async function POST(req: Request) {
     raw.forEach((m, i) => {
       if (m.role === "user" && Array.isArray(m.images) && m.images.length > 0) lastImg = i;
     });
+
+    if (memory === true) {
+      const me = userFrom(req);
+      if (me) {
+        const mr = await rcall([["GET", "zm:" + me]]);
+        try {
+          const mo = JSON.parse(String(mr?.[0] ?? ""));
+          const lines = (Array.isArray(mo.items) ? mo.items : [])
+            .slice(-30)
+            .map((x: { text?: unknown }) => "- " + String(x.text ?? "").slice(0, 160));
+          if (lines.length > 0) {
+            system += "\n\nWhat you remember about this user (saved by them or learned from earlier chats). Use it naturally when relevant and do not recite it unless asked:\n" + lines.join("\n");
+          }
+        } catch {}
+      }
+    }
 
     let lastDoc = -1;
     raw.forEach((m, i) => {

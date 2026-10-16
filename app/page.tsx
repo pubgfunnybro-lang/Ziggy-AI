@@ -400,6 +400,8 @@ function Feedback({ q, a, persona }: { q: string; a: string; persona: string }) 
   );
 }
 
+const MEM_TRIGGER = /\b(remember|my name|call me|i am|i'm|i live|i work|i study|i like|i love|i prefer|i hate|i speak|my favorite|my favourite|my goal)\b/i;
+
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeId, setActiveId] = useState("");
@@ -415,6 +417,12 @@ export default function Home() {
   const [voiceIdx, setVoiceIdx] = useState(0);
   const [voiceOk, setVoiceOk] = useState(false);
   const [note, setNote] = useState("");
+  const [memoryOn, setMemoryOn] = useState(true);
+  const [memOpen, setMemOpen] = useState(false);
+  const [memItems, setMemItems] = useState<{ id: string; text: string }[]>([]);
+  const [memInput, setMemInput] = useState("");
+  const [memBusy, setMemBusy] = useState(false);
+  const [memErr, setMemErr] = useState("");
   const [user, setUser] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -459,6 +467,7 @@ export default function Home() {
       if (pe && PERSONAS.some((p) => p.id === pe)) setPersona(pe);
       setWeb(localStorage.getItem(WEB_KEY) === "1");
       setCustom(localStorage.getItem(CUSTOM_KEY) ?? "");
+      setMemoryOn(localStorage.getItem("ziggy-memory") !== "0");
     } catch {}
     if (!Array.isArray(list)) list = [];
     if (list.length === 0) {
@@ -492,8 +501,9 @@ export default function Home() {
       localStorage.setItem(PERSONA_KEY, persona);
       localStorage.setItem(WEB_KEY, web ? "1" : "0");
       localStorage.setItem(CUSTOM_KEY, custom);
+      localStorage.setItem("ziggy-memory", memoryOn ? "1" : "0");
     } catch {}
-  }, [chats, activeId, theme, persona, web, custom, ready]);
+  }, [chats, activeId, theme, persona, web, custom, memoryOn, ready]);
 
   chatsRef.current = chats;
 
@@ -675,6 +685,54 @@ export default function Home() {
     setSidebar(false);
   }
 
+  function openMemory() {
+    setMemOpen(true);
+    setMemErr("");
+    fetch("/api/memory")
+      .then((r) => r.json())
+      .then((j: { items?: { id: string; text: string }[] }) => setMemItems(j.items ?? []))
+      .catch(() => {});
+  }
+
+  async function memAct(payload: Record<string, string>) {
+    setMemBusy(true);
+    setMemErr("");
+    try {
+      const r = await fetch("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = (await r.json()) as { items?: { id: string; text: string }[]; error?: string };
+      if (j.items) setMemItems(j.items);
+      if (j.error) setMemErr(j.error);
+    } catch {
+      setMemErr("Network error. Please try again.");
+    }
+    setMemBusy(false);
+  }
+
+  function addMemory() {
+    const t = memInput.trim();
+    if (!t || memBusy) return;
+    setMemInput("");
+    memAct({ action: "add", text: t });
+  }
+
+  function learn(text: string) {
+    if (!user || !memoryOn || !MEM_TRIGGER.test(text)) return;
+    fetch("/api/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "learn", text }),
+    })
+      .then((r) => r.json())
+      .then((j: { items?: { id: string; text: string }[] }) => {
+        if (j.items) setMemItems(j.items);
+      })
+      .catch(() => {});
+  }
+
   function removeChat(id: string) {
     rememberDeleted(id);
     if (loading && id === activeId) stop();
@@ -808,7 +866,7 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: payload, persona, web, custom }),
+        body: JSON.stringify({ messages: payload, persona, web, custom, memory: memoryOn }),
         signal: controller.signal,
       });
       if (res.status === 429) {
@@ -856,6 +914,7 @@ export default function Home() {
     setImages([]);
     setEditing(null);
     setDocs([]);
+    learn(content);
     run(active.id, next, title);
   }
 
@@ -963,6 +1022,76 @@ export default function Home() {
         </div>
       )}
 
+      {memOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setMemOpen(false)}>
+          <div
+            className="zside w-full max-w-lg rounded-2xl p-5"
+            style={{ border: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="zserif text-xl">Memory</h3>
+            <p className="zmuted mt-1 text-sm">
+              Facts Ziggy remembers about you across chats. You are in control: add, remove, or turn it off.
+            </p>
+            <label className="mt-4 flex cursor-pointer items-center justify-between text-sm">
+              <span>Use memory in chats</span>
+              <input
+                type="checkbox"
+                checked={memoryOn}
+                onChange={(e) => setMemoryOn(e.target.checked)}
+                className="h-4 w-4"
+                style={{ accentColor: "var(--accent)" }}
+              />
+            </label>
+            <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+              {memItems.length === 0 && (
+                <p className="zmuted text-sm">
+                  Nothing saved yet. Tell Ziggy things like &quot;My name is Sara&quot; or &quot;Remember that I prefer short answers&quot;.
+                </p>
+              )}
+              {memItems.map((it) => (
+                <div key={it.id} className="zchip flex items-start justify-between gap-2 rounded-lg px-3 py-2 text-sm">
+                  <span>{it.text}</span>
+                  <button
+                    onClick={() => memAct({ action: "delete", id: it.id })}
+                    aria-label="Delete memory"
+                    className="zmuted shrink-0"
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            {memErr && <p className="mt-2 text-sm text-red-400">{memErr}</p>}
+            <div className="mt-3 flex gap-2">
+              <input
+                value={memInput}
+                onChange={(e) => setMemInput(e.target.value.slice(0, 160))}
+                onKeyDown={(e) => e.key === "Enter" && addMemory()}
+                placeholder="Add something for Ziggy to remember"
+                className="zinput flex-1 rounded-lg px-3 py-2 text-sm outline-none"
+              />
+              <button onClick={addMemory} style={{ background: "var(--accent)" }} className="rounded-lg px-3 py-2 text-sm text-white">
+                Add
+              </button>
+            </div>
+            <div className="mt-4 flex justify-between">
+              <button
+                onClick={() => {
+                  if (window.confirm("Delete all memories?")) memAct({ action: "clear" });
+                }}
+                className="zghost rounded-lg px-3 py-1.5 text-sm"
+              >
+                Clear all
+              </button>
+              <button onClick={() => setMemOpen(false)} className="zbtn rounded-lg px-4 py-1.5 text-sm">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {sidebar && <div className="fixed inset-0 z-20 bg-black/50 md:hidden" onClick={() => setSidebar(false)} />}
 
       <aside
@@ -1012,6 +1141,9 @@ export default function Home() {
                 Signed in as <span className="font-medium" style={{ color: "var(--text)" }}>{user}</span>. Chats sync to your account.
               </div>
               <div className="flex gap-2">
+                <button onClick={openMemory} className="zbtn rounded-lg px-3 py-1.5 text-xs">
+                  Memory
+                </button>
                 <button onClick={logout} className="zbtn rounded-lg px-3 py-1.5 text-xs">
                   Sign out
                 </button>

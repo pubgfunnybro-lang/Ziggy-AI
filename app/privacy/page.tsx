@@ -30,6 +30,9 @@ export default function Privacy() {
           <strong>Analytics.</strong> Anonymous page-view statistics are collected with Vercel Web Analytics.
         </li>
         <li>
+          <strong>Memory.</strong> If you are signed in and memory is on, Ziggy may save short facts you tell it about yourself, such as your name or preferences, and use them in future chats. You can view, add, delete or turn off memory at any time from the sidebar. Ziggy is told not to save sensitive data such as passwords.
+        </li>
+        <li>
           <strong>Feedback.</strong> If you press the thumbs up or thumbs down under an answer, a short snippet of that question and answer is saved so Ziggy can be improved.
         </li>
         <li>
