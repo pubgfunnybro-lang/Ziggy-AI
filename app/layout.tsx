@@ -1,46 +1,21 @@
-import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Analytics } from "@vercel/analytics/next";
-
-const title = "Ziggy AI";
-const description = "Ziggy AI is a fast, friendly AI assistant. Ask anything, in any language.";
+import type { Metadata } from "next";
+import { AuthProvider } from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://ziggy-ai-pi.vercel.app"),
-  title,
-  description,
-  applicationName: "Ziggy AI",
-  openGraph: {
-    title,
-    description,
-    url: "https://ziggy-ai-pi.vercel.app",
-    siteName: "Ziggy AI",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title,
-    description,
-  },
-  appleWebApp: {
-    capable: true,
-    title: "Ziggy",
-    statusBarStyle: "black-translucent",
-  },
+  title: "Ziggy AI",
+  description: "Your Intelligent AI Assistant",
 };
 
-export const viewport: Viewport = {
-  themeColor: "#1f1e1d",
-  width: "device-width",
-  initialScale: 1,
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>
-        {children}
-        <Analytics />
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

@@ -1,4 +1,5 @@
 "use client";
+import { useSession, signIn, signOut } from "next-auth/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -434,6 +435,7 @@ function Feedback({ q, a, persona }: { q: string; a: string; persona: string }) 
 const MEM_TRIGGER = /\b(remember|my name|call me|i am|i'm|i live|i work|i study|i like|i love|i prefer|i hate|i speak|my favorite|my favourite|my goal)\b/i;
 
 export default function Home() {
+  const { data: session } = useSession();
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeId, setActiveId] = useState("");
   const [input, setInput] = useState("");
