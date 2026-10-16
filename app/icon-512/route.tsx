@@ -1,21 +1,11 @@
 import { ImageResponse } from "next/og";
+import { LOGO_FULL } from "../logo";
 
 export function GET() {
   return new ImageResponse(
     (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "linear-gradient(135deg, #e8946f, #c45f3d)",
-        }}
-      >
-        <svg width="260" height="286" viewBox="12 10 40 44">
-          <path d="M16 14H48V20.5L28.5 43.5H48V50H16V43.5L35.5 20.5H16Z" fill="#ffffff" />
-        </svg>
+      <div style={{ display: "flex", width: "100%", height: "100%" }}>
+        <img src={LOGO_FULL} width={512} height={512} alt="" />
       </div>
     ),
     { width: 512, height: 512 }
