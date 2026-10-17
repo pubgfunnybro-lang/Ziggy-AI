@@ -15,7 +15,7 @@ export default function Privacy() {
       <p>Last updated: October 2026</p>
       <ul style={{ paddingLeft: 20, marginTop: 24, display: "grid", gap: 14 }}>
         <li>
-          <strong>Chats.</strong> Without an account, your chats stay in your browser only. If you create an account, your chats are also saved as text (without images or documents) on Ziggy&apos;s server so they sync across your devices. Accounts use a username and a password, and the password is stored only as a salted hash. Passwords cannot be recovered, and you can delete your account and its saved chats at any time from the sidebar.
+          <strong>Chats.</strong> Without an account, your chats stay in your browser only. If you create an account, your chats are also saved as text (without images or documents) on Ziggy&apos;s server so they sync across your devices. You can sign in with a username and password (the password is stored only as a salted hash) or with Google, in which case Ziggy receives only your name and email address from Google and never your Google password. Passwords cannot be recovered, and you can delete your account and its saved chats at any time from the sidebar.
         </li>
         <li>
           <strong>What is sent when you chat.</strong> Your message, the earlier messages of that conversation, your custom instructions, and any attached images or document text are sent to Ziggy&apos;s server and forwarded to Groq to generate the reply. Ziggy does not store them afterwards.

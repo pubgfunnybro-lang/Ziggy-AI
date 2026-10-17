@@ -5,7 +5,15 @@ const NAME_RE = /^[a-z0-9_]{3,20}$/;
 const err = (message: string, status = 400) => Response.json({ error: message }, { status });
 
 export async function GET(req: Request) {
-  return Response.json({ user: userFrom(req) });
+  const user = userFrom(req);
+  let name: string | null = null;
+  if (user && user.startsWith("g_")) {
+    const r = await rcall([["GET", "zu:" + user]]);
+    try {
+      name = JSON.parse(String(r?.[0] ?? "")).name ?? null;
+    } catch {}
+  }
+  return Response.json({ user, name });
 }
 
 export async function POST(req: Request) {
@@ -34,6 +42,7 @@ export async function POST(req: Request) {
     if (password.length < 8 || password.length > 100) return err("Password must be 8 to 100 characters.");
 
     if (action === "register") {
+      if (username.startsWith("g_")) return err("Usernames cannot start with g_.");
       if (await hit("za:r:" + ip + ":" + Math.floor(Date.now() / 3600000), 3700, 5)) {
         return err("Too many attempts. Please try again later.", 429);
       }
@@ -52,7 +61,7 @@ export async function POST(req: Request) {
       const res = await rcall([["GET", "zu:" + username]]);
       const rec = res && typeof res[0] === "string" ? (JSON.parse(res[0]) as { salt: string; hash: string }) : null;
       const bad = "Incorrect username or password.";
-      if (!rec) {
+      if (!rec || !rec.salt) {
         scryptSync(password, "0".repeat(32), 64);
         return err(bad, 401);
       }
