@@ -1,13 +1,13 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 
 type Msg = { role: "user" | "assistant"; content: string; images?: string[]; imgCount?: number; sources?: { title: string; url: string }[]; docs?: { name: string; text: string }[]; docNames?: string[] };
 type Chat = { id: string; title: string; messages: Msg[]; updated: number };
 type Theme = "dark" | "light";
-type Idea = { title: string; sub: string; text: string; icon: string; image?: boolean };
+type Idea = { title: string; sub: string; text: string; icon: string; image?: boolean; make?: boolean };
 type SpeechRec = {
   lang: string;
   interimResults: boolean;
@@ -26,6 +26,14 @@ const OLD_KEY = "ziggy-chat-v1";
 const THEME_KEY = "ziggy-theme";
 const PERSONA_KEY = "ziggy-persona-v2";
 const MAX_IMAGES = 3;
+const IMG_STYLES = [
+  { id: "auto", label: "Auto" },
+  { id: "photo", label: "Photo" },
+  { id: "art", label: "Digital art" },
+  { id: "anime", label: "Anime" },
+  { id: "render", label: "3D" },
+  { id: "logo", label: "Logo" },
+];
 const WEB_KEY = "ziggy-web";
 const CUSTOM_KEY = "ziggy-custom";
 
@@ -47,7 +55,7 @@ const VOICES = [
 const IDEAS: Idea[] = [
   { title: "Analyze an image", sub: "Upload a photo or screenshot", text: "", icon: "image", image: true },
   { title: "Learn Python", sub: "Get a simple study plan", text: "Make me a plan to learn Python", icon: "code" },
-  { title: "Explain AI", sub: "In plain words", text: "Explain AI in simple words", icon: "spark" },
+  { title: "Create an image", sub: "Describe it and Ziggy draws it", text: "", icon: "spark", make: true },
   { title: "Write an email", sub: "Short and professional", text: "Help me write a short, professional email to a teacher", icon: "mail" },
 ];
 
@@ -173,7 +181,30 @@ function Pre({ children }: { children?: ReactNode }) {
   );
 }
 
+function GenImage({ src, alt }: { src: string; alt: string }) {
+  const [bad, setBad] = useState(false);
+  if (!src) return null;
+  if (bad) {
+    return <span className="zmuted block text-sm">This image is no longer available. Generated images are not kept after you reload the page.</span>;
+  }
+  return (
+    <span className="my-3 block w-fit max-w-full">
+      <img
+        src={src}
+        alt={alt}
+        onError={() => setBad(true)}
+        className="max-h-[28rem] max-w-full rounded-xl"
+        style={{ border: "1px solid var(--border)" }}
+      />
+      <a href={src} download="ziggy-image.jpg" className="zact mt-1 inline-block">
+        Download
+      </a>
+    </span>
+  );
+}
+
 const mdComponents: Components = {
+  img: ({ src, alt }) => <GenImage src={typeof src === "string" ? src : ""} alt={alt ?? ""} />,
   pre: ({ children }) => <Pre>{children}</Pre>,
   table: ({ children }) => (
     <div className="zscroll">
@@ -448,6 +479,10 @@ export default function Home() {
   const [voiceIdx, setVoiceIdx] = useState(0);
   const [voiceOk, setVoiceOk] = useState(false);
   const [note, setNote] = useState("");
+  const [imageMode, setImageMode] = useState(false);
+  const [imgStyle, setImgStyle] = useState("auto");
+  const imgModeRef = useRef(false);
+  imgModeRef.current = imageMode;
   const [memoryOn, setMemoryOn] = useState(true);
   const [memOpen, setMemOpen] = useState(false);
   const [memItems, setMemItems] = useState<{ id: string; text: string }[]>([]);
@@ -907,7 +942,62 @@ export default function Home() {
     }
   }
 
+  async function makeImage(chatId: string, base: Msg[], title?: string) {
+    const prompt = (base[base.length - 1]?.content ?? "").trim();
+    setChats((p) =>
+      p.map((c) =>
+        c.id === chatId
+          ? { ...c, ...(title ? { title } : {}), updated: Date.now(), messages: [...base, { role: "assistant", content: "" }] }
+          : c
+      )
+    );
+    setNote("");
+    setLoading(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      if (!prompt) throw new Error("empty");
+      const res = await fetch("/api/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, style: imgStyle }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        let msg = "Sorry, I could not create that image. Please try again.";
+        try {
+          const j = (await res.json()) as { error?: string };
+          if (j.error) msg = j.error;
+        } catch {}
+        setMsgs(chatId, [...base, { role: "assistant", content: msg }]);
+      } else {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        let used = "";
+        try {
+          used = decodeURIComponent(res.headers.get("x-ziggy-prompt") ?? "");
+        } catch {}
+        const alt = prompt.replace(/[\[\]()\n\r]/g, " ").slice(0, 100);
+        const cap = used.replace(/[*_`#<>\[\]()|~\n\r]/g, " ").slice(0, 300);
+        setMsgs(chatId, [
+          ...base,
+          { role: "assistant", content: "![" + alt + "](" + url + ")" + (cap ? "\n\n_Prompt used: " + cap + "_" : "") },
+        ]);
+      }
+    } catch {
+      if (controller.signal.aborted) {
+        setMsgs(chatId, [...base, { role: "assistant", content: "Stopped." }]);
+      } else {
+        setMsgs(chatId, [...base, { role: "assistant", content: "Sorry, I could not create that image. Please try again." }]);
+      }
+    }
+    setLoading(false);
+  }
+
   async function run(chatId: string, base: Msg[], title?: string) {
+    if (imgModeRef.current) {
+      return makeImage(chatId, base, title);
+    }
     stickRef.current = true;
     setChats((p) =>
       p.map((c) =>
@@ -993,6 +1083,11 @@ export default function Home() {
     if (loading || !active) return;
     const lastUser = active.messages.map((m) => m.role).lastIndexOf("user");
     if (lastUser < 0) return;
+    const lastMsg = active.messages[active.messages.length - 1];
+    if (lastMsg && lastMsg.role === "assistant" && lastMsg.content.startsWith("![")) {
+      makeImage(active.id, active.messages.slice(0, lastUser + 1));
+      return;
+    }
     run(active.id, active.messages.slice(0, lastUser + 1));
   }
 
@@ -1268,6 +1363,17 @@ export default function Home() {
             <button onClick={() => setShowSettings(true)} aria-label="Settings" title="Custom instructions" className="zghost rounded-lg p-2">
               <Icon name="sliders" />
             </button>
+            <button
+              onClick={() => setImageMode(!imageMode)}
+              aria-pressed={imageMode}
+              aria-label="Create images"
+              title="Create an image from a description"
+              className={"flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm " + (imageMode ? "text-white" : "zghost")}
+              style={imageMode ? { background: "var(--accent)", borderColor: "var(--accent)" } : { borderColor: "var(--border)" }}
+            >
+              <Icon name="spark" size={16} />
+              <span className="hidden sm:inline">Image</span>
+            </button>
             <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Personality" className="zselect">
               {PERSONAS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1311,7 +1417,7 @@ export default function Home() {
                   {IDEAS.map((idea) => (
                     <button
                       key={idea.title}
-                      onClick={() => (idea.image ? fileRef.current?.click() : send(idea.text))}
+                      onClick={() => (idea.make ? setImageMode(true) : idea.image ? fileRef.current?.click() : send(idea.text))}
                       className="zchip flex items-start gap-3 rounded-xl p-4 transition"
                     >
                       <span className="zmuted mt-0.5">
@@ -1396,7 +1502,11 @@ export default function Home() {
                     {m.content ? (
                       <>
                         <div className="zmd">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+                          <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={mdComponents}
+                          urlTransform={(u) => (u.startsWith("blob:") ? u : defaultUrlTransform(u))}
+                        >
                             {m.content}
                           </ReactMarkdown>
                         </div>
@@ -1418,8 +1528,8 @@ export default function Home() {
                         )}
                         {!(loading && i === messages.length - 1) && (
                           <div className="zactions -ml-2 mt-2 flex flex-wrap gap-1">
-                            <CopyButton text={m.content} />
-                            <SpeakButton text={m.content} />
+                            {!m.content.startsWith("![") && <CopyButton text={m.content} />}
+                            {!m.content.startsWith("![") && <SpeakButton text={m.content} />}
                             <Feedback key={activeId + ":" + i + ":" + m.content.length} q={messages[i - 1]?.content ?? ""} a={m.content} persona={persona} />
                             {i === messages.length - 1 && (
                               <button onClick={regenerate} className="zact">
@@ -1520,7 +1630,7 @@ export default function Home() {
                     if (!loading) send();
                   }
                 }}
-                placeholder="Message Ziggy"
+                placeholder={imageMode ? "Describe the image you want" : "Message Ziggy"}
               />
               {voiceOk && (
                 <>
@@ -1560,6 +1670,20 @@ export default function Home() {
                 )}
               </button>
             </div>
+            {imageMode && (
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+                {IMG_STYLES.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setImgStyle(s.id)}
+                    className={"rounded-full border px-3 py-1 text-xs " + (imgStyle === s.id ? "text-white" : "zghost")}
+                    style={imgStyle === s.id ? { background: "var(--accent)", borderColor: "var(--accent)" } : { borderColor: "var(--border)" }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {note && <p className="mt-2 text-center text-xs text-amber-500">{note}</p>}
             <p className="zmuted mt-2 text-center text-[11px]">Ziggy can make mistakes. Please double-check important information.{" "}
               <a href="/privacy" className="underline">
