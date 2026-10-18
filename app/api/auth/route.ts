@@ -13,7 +13,14 @@ export async function GET(req: Request) {
       name = JSON.parse(String(r?.[0] ?? "")).name ?? null;
     } catch {}
   }
-  return Response.json({ user, name });
+  let linked = false;
+  if (user && !user.startsWith("g_")) {
+    const r2 = await rcall([["GET", "zu:" + user]]);
+    try {
+      linked = !!JSON.parse(String(r2?.[0] ?? "")).email;
+    } catch {}
+  }
+  return Response.json({ user, name, linked });
 }
 
 export async function POST(req: Request) {

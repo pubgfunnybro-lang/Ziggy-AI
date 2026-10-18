@@ -185,7 +185,7 @@ function GenImage({ src, alt }: { src: string; alt: string }) {
   const [bad, setBad] = useState(false);
   if (!src) return null;
   if (bad) {
-    return <span className="zmuted block text-sm">This image is no longer available. Generated images are not kept after you reload the page.</span>;
+    return <span className="zmuted block text-sm">This image is no longer available. Sign in to keep generated images across reloads and devices.</span>;
   }
   return (
     <span className="my-3 block w-fit max-w-full">
@@ -293,6 +293,36 @@ function hostOf(u: string) {
   } catch {
     return u;
   }
+}
+
+function shrinkImage(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const href = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const max = 896;
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(href);
+        reject(new Error("canvas"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(href);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(href);
+      reject(new Error("load"));
+    };
+    img.src = href;
+  });
 }
 
 function uid() {
@@ -479,6 +509,10 @@ export default function Home() {
   const [voiceIdx, setVoiceIdx] = useState(0);
   const [voiceOk, setVoiceOk] = useState(false);
   const [note, setNote] = useState("");
+  const [linked, setLinked] = useState(false);
+  const [galOpen, setGalOpen] = useState(false);
+  const [galItems, setGalItems] = useState<{ id: string; prompt: string; t: number }[]>([]);
+  const [galBusy, setGalBusy] = useState(false);
   const [imageMode, setImageMode] = useState(false);
   const [imgStyle, setImgStyle] = useState("auto");
   const imgModeRef = useRef(false);
@@ -584,9 +618,10 @@ export default function Home() {
     } catch {}
     fetch("/api/auth")
       .then((r) => r.json())
-      .then((j: { user?: string | null; name?: string | null }) => {
+      .then((j: { user?: string | null; name?: string | null; linked?: boolean }) => {
         setUser(j.user ?? null);
         setUserName(j.name ?? null);
+        setLinked(j.linked === true);
       })
       .catch(() => {});
   }, []);
@@ -602,6 +637,18 @@ export default function Home() {
     };
     setAuthErr(msgs[p] ?? "Sign-in failed. Please try again.");
     setAuthOpen(true);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
+  useEffect(() => {
+    const l = new URLSearchParams(window.location.search).get("link");
+    if (!l) return;
+    const m: Record<string, string> = {
+      ok: "Google account linked. You can now sign in with either method.",
+      other: "That Google account is already linked to a different Ziggy account.",
+      fail: "Could not link the Google account. Please sign in with your username first and try again.",
+    };
+    setNote(m[l] ?? "");
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
@@ -709,6 +756,9 @@ export default function Home() {
 
   async function deleteAccount() {
     if (!window.confirm("Delete your account and all chats saved on the server? Chats on this device will stay.")) return;
+    try {
+      await fetch("/api/gallery", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ all: true }) });
+    } catch {}
     try {
       await fetch("/api/auth", {
         method: "POST",
@@ -824,6 +874,23 @@ export default function Home() {
       .then((j: { items?: { id: string; text: string }[] }) => {
         if (j.items) setMemItems(j.items);
       })
+      .catch(() => {});
+  }
+
+  function openGallery() {
+    setGalOpen(true);
+    setGalBusy(true);
+    fetch("/api/gallery")
+      .then((r) => r.json())
+      .then((j: { items?: { id: string; prompt: string; t: number }[] }) => setGalItems(j.items ?? []))
+      .catch(() => {})
+      .finally(() => setGalBusy(false));
+  }
+
+  function deleteImage(id: string) {
+    fetch("/api/gallery", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+      .then((r) => r.json())
+      .then((j: { items?: { id: string; prompt: string; t: number }[] }) => setGalItems(j.items ?? []))
       .catch(() => {});
   }
 
@@ -972,7 +1039,21 @@ export default function Home() {
         setMsgs(chatId, [...base, { role: "assistant", content: msg }]);
       } else {
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
+        let url = URL.createObjectURL(blob);
+        if (user) {
+          try {
+            const data = await shrinkImage(blob);
+            const sr = await fetch("/api/gallery", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt, data }),
+            });
+            if (sr.ok) {
+              const sj = (await sr.json()) as { url?: string };
+              if (sj.url) url = sj.url;
+            }
+          } catch {}
+        }
         let used = "";
         try {
           used = decodeURIComponent(res.headers.get("x-ziggy-prompt") ?? "");
@@ -1261,6 +1342,43 @@ export default function Home() {
         </div>
       )}
 
+      {galOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setGalOpen(false)}>
+          <div
+            className="zside w-full max-w-2xl rounded-2xl p-5"
+            style={{ border: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="zserif text-xl">Your images</h3>
+              <button onClick={() => setGalOpen(false)} aria-label="Close" className="zghost rounded-lg p-1.5">
+                <Icon name="close" />
+              </button>
+            </div>
+            <p className="zmuted mt-1 text-sm">Your latest 12 generated images are saved to your account.</p>
+            <div className="mt-4 grid max-h-[60vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
+              {galBusy && <p className="zmuted col-span-full text-sm">Loading...</p>}
+              {!galBusy && galItems.length === 0 && (
+                <p className="zmuted col-span-full text-sm">No saved images yet. Turn on Image and describe something to draw.</p>
+              )}
+              {galItems.map((g) => (
+                <div key={g.id} className="zchip overflow-hidden rounded-xl">
+                  <img src={"/api/gallery/image?id=" + g.id} alt={g.prompt} className="aspect-square w-full object-cover" />
+                  <div className="flex items-center justify-between gap-1 px-2 py-1.5">
+                    <a href={"/api/gallery/image?id=" + g.id} download={"ziggy-" + g.id + ".jpg"} className="zact">
+                      Download
+                    </a>
+                    <button onClick={() => deleteImage(g.id)} className="zact">
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {sidebar && <div className="fixed inset-0 z-20 bg-black/50 md:hidden" onClick={() => setSidebar(false)} />}
 
       <aside
@@ -1309,10 +1427,18 @@ export default function Home() {
               <div className="px-1 pb-2">
                 Signed in as <span className="font-medium" style={{ color: "var(--text)" }}>{userName ?? user}</span>. Chats sync to your account.
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button onClick={openMemory} className="zbtn rounded-lg px-3 py-1.5 text-xs">
                   Memory
                 </button>
+                <button onClick={openGallery} className="zbtn rounded-lg px-3 py-1.5 text-xs">
+                  Gallery
+                </button>
+                {!user.startsWith("g_") && !linked && (
+                  <a href="/api/auth/google?link=1" className="zbtn rounded-lg px-3 py-1.5 text-xs">
+                    Link Google
+                  </a>
+                )}
                 <button onClick={logout} className="zbtn rounded-lg px-3 py-1.5 text-xs">
                   Sign out
                 </button>

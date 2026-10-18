@@ -61,3 +61,70 @@ export function userFrom(req: Request): string | null {
   if (Number(exp) < Date.now() / 1000) return null;
   return /^[a-z0-9_]{3,20}$/.test(user) ? user : null;
 }
+
+type MergeChat = { id: string; updated?: number };
+type MergeMem = { id: string; text: string; t: number };
+type MergeImg = { id: string; prompt: string; t: number };
+
+function parseJson(x: unknown): unknown {
+  try {
+    return JSON.parse(String(x ?? ""));
+  } catch {
+    return null;
+  }
+}
+
+export async function mergeAccount(from: string, to: string) {
+  const r = await rcall([
+    ["GET", "zc:" + from],
+    ["GET", "zc:" + to],
+    ["GET", "zm:" + from],
+    ["GET", "zm:" + to],
+    ["GET", "zgl:" + from],
+    ["GET", "zgl:" + to],
+  ]);
+  if (!r) return;
+  const cmds: (string | number)[][] = [];
+
+  const cf = parseJson(r[0]) as { chats?: MergeChat[] } | null;
+  const ct = parseJson(r[1]) as { chats?: MergeChat[]; deleted?: string[] } | null;
+  if (cf && Array.isArray(cf.chats) && cf.chats.length > 0) {
+    const gone = new Set<string>(ct?.deleted ?? []);
+    const map = new Map<string, MergeChat>();
+    for (const c of [...(ct?.chats ?? []), ...cf.chats]) {
+      if (!c || gone.has(c.id)) continue;
+      const cur = map.get(c.id);
+      if (!cur || (c.updated ?? 0) > (cur.updated ?? 0)) map.set(c.id, c);
+    }
+    const chats = [...map.values()].sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50);
+    cmds.push(["SET", "zc:" + to, JSON.stringify({ chats, deleted: ct?.deleted ?? [] })]);
+  }
+  cmds.push(["DEL", "zc:" + from]);
+
+  const mf = parseJson(r[2]) as { items?: MergeMem[] } | null;
+  const mt = parseJson(r[3]) as { items?: MergeMem[] } | null;
+  if (mf && Array.isArray(mf.items) && mf.items.length > 0) {
+    const have = new Set((mt?.items ?? []).map((i) => i.text.toLowerCase()));
+    const items = [...(mt?.items ?? [])];
+    for (const i of mf.items) if (!have.has(i.text.toLowerCase())) items.push(i);
+    cmds.push(["SET", "zm:" + to, JSON.stringify({ items: items.slice(-30) })]);
+  }
+  cmds.push(["DEL", "zm:" + from]);
+
+  const gf = parseJson(r[4]) as MergeImg[] | null;
+  const gt = parseJson(r[5]) as MergeImg[] | null;
+  if (Array.isArray(gf) && gf.length > 0) {
+    const all = [...(Array.isArray(gt) ? gt : []), ...gf].sort((a, b) => b.t - a.t);
+    const keep = all.slice(0, 12);
+    for (const g of gf) {
+      if (keep.some((k) => k.id === g.id)) cmds.push(["RENAME", "zgi:" + from + ":" + g.id, "zgi:" + to + ":" + g.id]);
+      else cmds.push(["DEL", "zgi:" + from + ":" + g.id]);
+    }
+    for (const d of all.slice(12)) {
+      if (!gf.some((g) => g.id === d.id)) cmds.push(["DEL", "zgi:" + to + ":" + d.id]);
+    }
+    cmds.push(["SET", "zgl:" + to, JSON.stringify(keep)]);
+  }
+  cmds.push(["DEL", "zgl:" + from]);
+  await rcall(cmds);
+}

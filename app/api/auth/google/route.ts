@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { userFrom } from "../../../lib/server";
 
 function origin(req: Request) {
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
@@ -9,8 +10,13 @@ function origin(req: Request) {
 export function GET(req: Request) {
   const id = process.env.GOOGLE_CLIENT_ID;
   const base = origin(req);
+  const link = new URL(req.url).searchParams.get("link") === "1";
   if (!id || !process.env.GOOGLE_CLIENT_SECRET || !process.env.AUTH_SECRET) {
-    return Response.redirect(base + "/?auth=unavailable", 302);
+    return Response.redirect(base + (link ? "/?link=fail" : "/?auth=unavailable"), 302);
+  }
+  if (link) {
+    const me = userFrom(req);
+    if (!me || me.startsWith("g_")) return Response.redirect(base + "/?link=fail", 302);
   }
   const state = randomBytes(16).toString("hex");
   const params = new URLSearchParams({
@@ -22,11 +28,8 @@ export function GET(req: Request) {
     prompt: "select_account",
   });
   const secure = base.startsWith("https") ? "; Secure" : "";
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString(),
-      "Set-Cookie": "zg_state=" + state + "; Path=/api/auth/google; HttpOnly; SameSite=Lax; Max-Age=600" + secure,
-    },
-  });
+  const h = new Headers({ Location: "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString() });
+  h.append("Set-Cookie", "zg_state=" + state + "; Path=/api/auth/google; HttpOnly; SameSite=Lax; Max-Age=600" + secure);
+  h.append("Set-Cookie", "zg_link=" + (link ? "1" : "0") + "; Path=/api/auth/google; HttpOnly; SameSite=Lax; Max-Age=600" + secure);
+  return new Response(null, { status: 302, headers: h });
 }

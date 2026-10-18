@@ -24,7 +24,7 @@ export default function Privacy() {
           <strong>Web search.</strong> When you turn on the Web button, your question is sent to Tavily to find sources.
         </li>
         <li>
-          <strong>Images.</strong> When you create an image, your description is sent to Groq to improve its wording and to Cloudflare to generate the picture. Ziggy does not store generated images.
+          <strong>Images.</strong> When you create an image, your description is sent to Groq to improve its wording and to Cloudflare to generate the picture. If you are signed in, your latest 12 generated images are saved to your account so you can see them again, and you can delete them at any time from the Gallery.
         </li>
         <li>
           <strong>Usage limits.</strong> To prevent abuse, your IP address is used in short-lived counters that expire within a day. Hosting provider Vercel may also keep standard server logs.
