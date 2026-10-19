@@ -26,8 +26,14 @@ const OLD_KEY = "ziggy-chat-v1";
 const THEME_KEY = "ziggy-theme";
 const PERSONA_KEY = "ziggy-persona-v2";
 const MAX_IMAGES = 3;
+const IMG_SIZES = [
+  { id: "wide", label: "Wide" },
+  { id: "square", label: "Square" },
+  { id: "tall", label: "Tall" },
+];
 const IMG_STYLES = [
   { id: "auto", label: "Auto" },
+  { id: "cinematic", label: "Cinematic" },
   { id: "photo", label: "Photo" },
   { id: "art", label: "Digital art" },
   { id: "anime", label: "Anime" },
@@ -300,7 +306,7 @@ function shrinkImage(blob: Blob): Promise<string> {
     const href = URL.createObjectURL(blob);
     const img = new Image();
     img.onload = () => {
-      const max = 896;
+      const max = 1152;
       const scale = Math.min(1, max / Math.max(img.width, img.height));
       const w = Math.max(1, Math.round(img.width * scale));
       const h = Math.max(1, Math.round(img.height * scale));
@@ -515,6 +521,7 @@ export default function Home() {
   const [galBusy, setGalBusy] = useState(false);
   const [imageMode, setImageMode] = useState(false);
   const [imgStyle, setImgStyle] = useState("auto");
+  const [imgSize, setImgSize] = useState("wide");
   const imgModeRef = useRef(false);
   imgModeRef.current = imageMode;
   const [memoryOn, setMemoryOn] = useState(true);
@@ -1027,7 +1034,7 @@ export default function Home() {
       const res = await fetch("/api/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, style: imgStyle }),
+        body: JSON.stringify({ prompt, style: imgStyle, size: imgSize }),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -1798,6 +1805,17 @@ export default function Home() {
             </div>
             {imageMode && (
               <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+                {IMG_SIZES.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setImgSize(s.id)}
+                    className={"rounded-full border px-3 py-1 text-xs " + (imgSize === s.id ? "text-white" : "zghost")}
+                    style={imgSize === s.id ? { background: "var(--accent)", borderColor: "var(--accent)" } : { borderColor: "var(--border)" }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+                <span className="zmuted px-1 text-xs">|</span>
                 {IMG_STYLES.map((s) => (
                   <button
                     key={s.id}
