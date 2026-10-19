@@ -4,18 +4,8 @@ export const maxDuration = 60;
 
 const err = (message: string, status = 400) => Response.json({ error: message }, { status });
 
-const STYLES: Record<string, string> = {
-  auto: "highly detailed, sharp focus, rich realistic textures, professional quality",
-  cinematic:
-    "cinematic concept art, dramatic moody lighting, volumetric atmosphere, intricate fine details, realistic textures, rich contrast, subtle film grain, ultra detailed",
-  photo: "photorealistic photograph, natural lighting, sharp focus, high detail",
-  art: "digital painting, detailed illustration, rich colors, concept art",
-  anime: "anime style illustration, clean line art, vibrant colors",
-  render: "3D render, soft studio lighting, smooth materials, high detail",
-  logo: "minimal vector logo design, flat colors, clean shapes, plain white background",
-};
-
-const SIZES: Record<string, [number, number]> = {
+type Shape = "wide" | "tall" | "square";
+const SIZES: Record<Shape, [number, number]> = {
   wide: [1344, 768],
   square: [1024, 1024],
   tall: [768, 1344],
@@ -26,10 +16,12 @@ const NO = "Ziggy can't create that kind of image. Please try a different descri
 const BASE = "@cf/black-forest-labs/";
 let skipNew = 0;
 
-async function refine(prompt: string, style: string): Promise<string> {
+async function refine(prompt: string, previous: string): Promise<{ text: string; shape: Shape }> {
   const sys =
-    "You are an expert art director writing prompts for a high-end AI image generator. Rewrite the user's request as one rich English prompt of 90 to 140 words. Describe the main subject with concrete details (materials, textures, ornament, wear), the setting in layers (foreground, midground, background), the composition and camera (angle, lens, depth of field), the lighting (direction, quality, colour temperature, rim light, haze), the mood and the colour palette. Keep everything the user asked for and never contradict it. Use vivid, specific nouns instead of vague praise. Do not add text, captions, logos or watermarks. For logos, icons or flat designs, keep the prompt short and describe a simple clean design instead of a scene. Return only the prompt.";
-  const user = "Request: " + prompt + (style !== "auto" ? "\nStyle: " + style : "");
+    "You are an expert art director writing prompts for a high-end AI image generator. The first line of your reply must be one word: WIDE for landscapes and scenes, TALL for portraits of people or phone wallpapers, or SQUARE for logos, icons, objects, characters and anything else. Then, on the next line, write one rich English prompt of 90 to 140 words. Describe the main subject with concrete details (materials, textures, ornament, wear), the setting in layers (foreground, midground, background), the composition and camera (angle, lens, depth of field), the lighting (direction, quality, colour temperature, rim light, haze), the mood and the colour palette. Keep everything the user asked for and never contradict it. Use vivid, specific nouns instead of vague praise. Unless the user asks for a specific style (anime, cartoon, flat logo, sketch, 3D, pixel art and so on), default to a realistic, cinematic, richly detailed look with dramatic lighting. Do not add text, captions, logos or watermarks. For logos, icons or flat designs, keep the prompt short and describe a simple clean design instead of a scene. If a previous prompt is given, the user wants a changed version of that image: keep its subject and details and apply the requested change. Return only the two parts, nothing else.";
+  const user = previous
+    ? "Previous image prompt: " + previous.slice(0, 1200) + "\nChange requested: " + prompt
+    : "Request: " + prompt;
   for (const extra of [{ reasoning_effort: "low" }, {}] as Record<string, unknown>[]) {
     try {
       const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -51,16 +43,21 @@ async function refine(prompt: string, style: string): Promise<string> {
         continue;
       }
       const j = await r.json();
-      const out = String(j.choices?.[0]?.message?.content ?? "")
-        .trim()
-        .replace(/^["']|["']$/g, "")
-        .slice(0, 1100);
-      if (out.length >= 5) return out;
+      const raw = String(j.choices?.[0]?.message?.content ?? "").trim();
+      const m = raw.match(/^\s*(WIDE|TALL|SQUARE)\b[^\n]*\n+([\s\S]+)$/i);
+      if (m && m[2].trim().length >= 5) {
+        return {
+          text: m[2].trim().replace(/^["']|["']$/g, "").slice(0, 1100),
+          shape: m[1].toLowerCase() as Shape,
+        };
+      }
+      const plain = raw.replace(/^(WIDE|TALL|SQUARE)\b[:\s-]*/i, "").replace(/^["']|["']$/g, "").slice(0, 1100);
+      if (plain.length >= 5) return { text: plain, shape: "square" };
     } catch (e) {
       console.error(e);
     }
   }
-  return prompt;
+  return { text: previous ? (previous.slice(0, 600) + ", " + prompt).slice(0, 1100) : prompt, shape: "square" };
 }
 
 async function paint(acct: string, token: string, prompt: string, w: number, h: number) {
@@ -116,8 +113,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const prompt = String(body.prompt ?? "").trim().slice(0, 500);
-    const style = typeof body.style === "string" && body.style in STYLES ? body.style : "auto";
-    const size = typeof body.size === "string" && body.size in SIZES ? body.size : "wide";
+    const previous = String(body.previous ?? "").trim().slice(0, 1200);
     if (prompt.length < 2) return err("Please describe the image you want.");
     if (BLOCK.test(prompt)) return err(NO);
 
@@ -140,19 +136,18 @@ export async function POST(req: Request) {
       return err("Ziggy has reached its image limit for today. Please try again tomorrow.", 429);
     }
 
-    const refined = await refine(prompt, style);
-    if (BLOCK.test(refined)) return err(NO);
-    const full = (refined + ", " + STYLES[style]).slice(0, 1600);
-    const [w, h] = SIZES[size];
+    const refined = await refine(prompt, previous);
+    if (BLOCK.test(refined.text)) return err(NO);
+    const [w, h] = SIZES[refined.shape];
 
-    const out = await paint(acct, token, full, w, h);
+    const out = await paint(acct, token, refined.text, w, h);
     if (!out) return err("Could not create the image. Please try again in a moment.", 502);
 
     return new Response(out.data, {
       headers: {
         "Content-Type": "image/jpeg",
         "Cache-Control": "no-store",
-        "x-ziggy-prompt": encodeURIComponent(refined.slice(0, 300)),
+        "x-ziggy-prompt": encodeURIComponent(refined.text),
         "x-ziggy-model": out.model,
       },
     });

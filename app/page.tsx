@@ -61,7 +61,7 @@ const VOICES = [
 const IDEAS: Idea[] = [
   { title: "Analyze an image", sub: "Upload a photo or screenshot", text: "", icon: "image", image: true },
   { title: "Learn Python", sub: "Get a simple study plan", text: "Make me a plan to learn Python", icon: "code" },
-  { title: "Create an image", sub: "Describe it and Ziggy draws it", text: "", icon: "spark", make: true },
+  { title: "Create an image", sub: "Ziggy draws what you describe", text: "Draw a cozy wooden cabin in a snowy forest at night, warm glowing windows, falling snow", icon: "spark" },
   { title: "Write an email", sub: "Short and professional", text: "Help me write a short, professional email to a teacher", icon: "mail" },
 ];
 
@@ -331,6 +331,36 @@ function shrinkImage(blob: Blob): Promise<string> {
   });
 }
 
+const IMG_NOUN = /\b(image|images|picture|pictures|photo|photograph|illustration|drawing|painting|sketch|artwork|wallpaper|poster|logo|icon|portrait|avatar|banner|cartoon|thumbnail|sticker|render|pic|pics)\b/i;
+const IMG_SKIP = /\b(code|script|function|program|python|javascript|typescript|react|html|css|sql|api|app|website|bot|prompt|caption|alt text|story|poem|essay|email|summary|summarize|summarise|explain|describe|translate|table|chart|graph|list|steps|tutorial|class|component|library)\b/i;
+const IMG_DRAW = /^(please\s+)?((can|could|would|will)\s+you\s+(please\s+)?)?(draw|paint|sketch|illustrate)\b(?!\s+(a\s+|an\s+|the\s+)?(conclusion|conclusions|comparison|parallel|line|lines|inference|attention|breath))/i;
+const IMG_FRAME = /^(please\s+)?((can|could|would|will)\s+you\s+(please\s+)?)?((generate|create|make|design|render|produce|show|give|get|send|imagine)\b|i\s+(want|need)\b|i'?d\s+like\b)/i;
+const IMG_NOUN_FIRST = /^(an?\s+)?(image|picture|photo|illustration|drawing|painting|wallpaper|poster|portrait|logo|cartoon)\s+(of|for|showing|with)\b/i;
+const IMG_UR = /\b(tasveer|tasvir|image|picture|photo|pic|logo|poster)\b.{0,40}\b(bana|banao|banado|banaiye|banana|draw|generate)\b|\b(bana|banao|banado|banaiye|draw|generate)\b.{0,40}\b(tasveer|tasvir|image|picture|photo|pic)\b/i;
+const IMG_UR_SCRIPT = /\u062A\u0635\u0648\u06CC\u0631.{0,40}\u0628\u0646\u0627|\u0628\u0646\u0627.{0,40}\u062A\u0635\u0648\u06CC\u0631/;
+const IMG_EDIT = /^(now\s+|also\s+|and\s+|but\s+|then\s+)?(please\s+)?((can|could|would|will)\s+you\s+(please\s+)?)?(make|change|add|remove|replace|turn|give|put|use|try|redo|redraw|regenerate|modify|update|swap|set|fix|edit|adjust|show|draw|paint|create|generate)\b|^(more|less|darker|brighter|bigger|smaller|lighter|without|with|in the style|in a|in an|at night|during)\b/i;
+const IMG_REF = /\b(it|this|that|same|again|instead|previous|last one)\b/i;
+
+function imageRequest(text: string, history: Msg[]): "new" | "edit" | null {
+  const s = text.trim();
+  if (s.length < 3 || s.length > 600) return null;
+  const lastA = history[history.length - 1];
+  const afterImage = !!lastA && lastA.role === "assistant" && lastA.content.startsWith("![");
+  const skip = IMG_SKIP.test(s);
+  const isNew =
+    !skip &&
+    (IMG_DRAW.test(s) ||
+      (IMG_FRAME.test(s) && IMG_NOUN.test(s)) ||
+      IMG_NOUN_FIRST.test(s) ||
+      IMG_UR.test(s) ||
+      IMG_UR_SCRIPT.test(s));
+  const isEdit = afterImage && !skip && s.length <= 160 && IMG_EDIT.test(s);
+  if (afterImage && (isNew || isEdit) && IMG_REF.test(s)) return "edit";
+  if (isNew) return "new";
+  if (isEdit) return "edit";
+  return null;
+}
+
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
@@ -519,11 +549,7 @@ export default function Home() {
   const [galOpen, setGalOpen] = useState(false);
   const [galItems, setGalItems] = useState<{ id: string; prompt: string; t: number }[]>([]);
   const [galBusy, setGalBusy] = useState(false);
-  const [imageMode, setImageMode] = useState(false);
-  const [imgStyle, setImgStyle] = useState("auto");
-  const [imgSize, setImgSize] = useState("wide");
-  const imgModeRef = useRef(false);
-  imgModeRef.current = imageMode;
+  const imgPromptsRef = useRef<Record<string, string>>({});
   const [memoryOn, setMemoryOn] = useState(true);
   const [memOpen, setMemOpen] = useState(false);
   const [memItems, setMemItems] = useState<{ id: string; text: string }[]>([]);
@@ -1016,8 +1042,19 @@ export default function Home() {
     }
   }
 
-  async function makeImage(chatId: string, base: Msg[], title?: string) {
+  async function makeImage(chatId: string, base: Msg[], title?: string, edit?: boolean) {
     const prompt = (base[base.length - 1]?.content ?? "").trim();
+    let previous = "";
+    if (edit) {
+      const hist = base.slice(0, -1);
+      const lastA = hist[hist.length - 1];
+      const um = lastA ? lastA.content.match(/\]\(([^)]+)\)/) : null;
+      previous = (um && imgPromptsRef.current[um[1]]) || "";
+      if (!previous) {
+        const lu = hist.map((m) => m.role).lastIndexOf("user");
+        previous = lu >= 0 ? hist[lu].content : "";
+      }
+    }
     setChats((p) =>
       p.map((c) =>
         c.id === chatId
@@ -1034,7 +1071,7 @@ export default function Home() {
       const res = await fetch("/api/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, style: imgStyle, size: imgSize }),
+        body: JSON.stringify({ prompt, previous }),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -1047,6 +1084,10 @@ export default function Home() {
       } else {
         const blob = await res.blob();
         let url = URL.createObjectURL(blob);
+        let used = "";
+        try {
+          used = decodeURIComponent(res.headers.get("x-ziggy-prompt") ?? "");
+        } catch {}
         if (user) {
           try {
             const data = await shrinkImage(blob);
@@ -1061,16 +1102,9 @@ export default function Home() {
             }
           } catch {}
         }
-        let used = "";
-        try {
-          used = decodeURIComponent(res.headers.get("x-ziggy-prompt") ?? "");
-        } catch {}
+        imgPromptsRef.current[url] = used || prompt;
         const alt = prompt.replace(/[\[\]()\n\r]/g, " ").slice(0, 100);
-        const cap = used.replace(/[*_`#<>\[\]()|~\n\r]/g, " ").slice(0, 300);
-        setMsgs(chatId, [
-          ...base,
-          { role: "assistant", content: "![" + alt + "](" + url + ")" + (cap ? "\n\n_Prompt used: " + cap + "_" : "") },
-        ]);
+        setMsgs(chatId, [...base, { role: "assistant", content: "![" + alt + "](" + url + ")" }]);
       }
     } catch {
       if (controller.signal.aborted) {
@@ -1083,8 +1117,13 @@ export default function Home() {
   }
 
   async function run(chatId: string, base: Msg[], title?: string) {
-    if (imgModeRef.current) {
-      return makeImage(chatId, base, title);
+    const ask = base[base.length - 1];
+    const kind =
+      ask && ask.role === "user" && !(ask.images && ask.images.length > 0)
+        ? imageRequest(ask.content, base.slice(0, -1))
+        : null;
+    if (kind) {
+      return makeImage(chatId, base, title, kind === "edit");
     }
     stickRef.current = true;
     setChats((p) =>
@@ -1100,7 +1139,7 @@ export default function Home() {
     abortRef.current = controller;
     let acc = "";
     try {
-      const payload = base.map((m) => ({ role: m.role, content: m.content, images: m.images, docs: m.docs }));
+      const payload = base.map((m) => ({ role: m.role, content: m.role === "assistant" && m.content.startsWith("![") ? "(Ziggy created an image: " + ((m.content.match(/^!\[([^\]]*)\]/) || [])[1] ?? "") + ")" : m.content, images: m.images, docs: m.docs }));
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1173,7 +1212,12 @@ export default function Home() {
     if (lastUser < 0) return;
     const lastMsg = active.messages[active.messages.length - 1];
     if (lastMsg && lastMsg.role === "assistant" && lastMsg.content.startsWith("![")) {
-      makeImage(active.id, active.messages.slice(0, lastUser + 1));
+      makeImage(
+        active.id,
+        active.messages.slice(0, lastUser + 1),
+        undefined,
+        imageRequest(active.messages[lastUser].content, active.messages.slice(0, lastUser)) === "edit"
+      );
       return;
     }
     run(active.id, active.messages.slice(0, lastUser + 1));
@@ -1496,17 +1540,6 @@ export default function Home() {
             <button onClick={() => setShowSettings(true)} aria-label="Settings" title="Custom instructions" className="zghost rounded-lg p-2">
               <Icon name="sliders" />
             </button>
-            <button
-              onClick={() => setImageMode(!imageMode)}
-              aria-pressed={imageMode}
-              aria-label="Create images"
-              title="Create an image from a description"
-              className={"flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm " + (imageMode ? "text-white" : "zghost")}
-              style={imageMode ? { background: "var(--accent)", borderColor: "var(--accent)" } : { borderColor: "var(--border)" }}
-            >
-              <Icon name="spark" size={16} />
-              <span className="hidden sm:inline">Image</span>
-            </button>
             <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Personality" className="zselect">
               {PERSONAS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1550,7 +1583,7 @@ export default function Home() {
                   {IDEAS.map((idea) => (
                     <button
                       key={idea.title}
-                      onClick={() => (idea.make ? setImageMode(true) : idea.image ? fileRef.current?.click() : send(idea.text))}
+                      onClick={() => (idea.image ? fileRef.current?.click() : send(idea.text))}
                       className="zchip flex items-start gap-3 rounded-xl p-4 transition"
                     >
                       <span className="zmuted mt-0.5">
@@ -1763,7 +1796,7 @@ export default function Home() {
                     if (!loading) send();
                   }
                 }}
-                placeholder={imageMode ? "Describe the image you want" : "Message Ziggy"}
+                placeholder="Message Ziggy"
               />
               {voiceOk && (
                 <>
@@ -1803,31 +1836,6 @@ export default function Home() {
                 )}
               </button>
             </div>
-            {imageMode && (
-              <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
-                {IMG_SIZES.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setImgSize(s.id)}
-                    className={"rounded-full border px-3 py-1 text-xs " + (imgSize === s.id ? "text-white" : "zghost")}
-                    style={imgSize === s.id ? { background: "var(--accent)", borderColor: "var(--accent)" } : { borderColor: "var(--border)" }}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-                <span className="zmuted px-1 text-xs">|</span>
-                {IMG_STYLES.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setImgStyle(s.id)}
-                    className={"rounded-full border px-3 py-1 text-xs " + (imgStyle === s.id ? "text-white" : "zghost")}
-                    style={imgStyle === s.id ? { background: "var(--accent)", borderColor: "var(--accent)" } : { borderColor: "var(--border)" }}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            )}
             {note && <p className="mt-2 text-center text-xs text-amber-500">{note}</p>}
             <p className="zmuted mt-2 text-center text-[11px]">Ziggy can make mistakes. Please double-check important information.{" "}
               <a href="/privacy" className="underline">
